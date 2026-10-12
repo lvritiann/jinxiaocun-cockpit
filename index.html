@@ -1,0 +1,1011 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>金小存 · 进销存</title>
+<script src="/vendor/echarts.min.js"></script>
+<style>
+  :root{
+    --bg:#0b0f17;
+    --panel:#141a26;
+    --panel-2:#1a2230;
+    --border:#232c3d;
+    --border-soft:#1d2636;
+    --text:#e8edf6;
+    --muted:#8a94a8;
+    --faint:#5d6779;
+    --accent:#4da3ff;
+    --accent-2:#38bdf8;
+    --accent-soft:rgba(77,163,255,.14);
+    --red:#f4574d;
+    --red-soft:rgba(244,87,77,.15);
+    --yellow:#f2b544;
+    --yellow-soft:rgba(242,181,68,.15);
+    --green:#34c98e;
+    --green-soft:rgba(52,201,142,.15);
+    --radius:14px;
+    --shadow:0 8px 30px rgba(0,0,0,.35);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei","Helvetica Neue",Arial,sans-serif;
+    background:radial-gradient(1200px 620px at 85% -10%,#13203a 0%,transparent 60%),var(--bg);
+    color:var(--text);
+    -webkit-font-smoothing:antialiased;
+  }
+  .app{display:flex;min-height:100vh}
+
+  /* ---------- 侧边导航 ---------- */
+  .sidebar{
+    width:220px;flex:0 0 220px;position:fixed;top:0;bottom:0;left:0;z-index:20;
+    background:var(--panel);border-right:1px solid var(--border);
+    display:flex;flex-direction:column;padding:20px 14px 16px;
+  }
+  .brand{display:flex;align-items:center;gap:11px;padding:2px 6px 20px}
+  .brand-logo{
+    width:40px;height:40px;border-radius:11px;flex:0 0 40px;
+    background:linear-gradient(135deg,#2563eb,#38bdf8);
+    display:flex;align-items:center;justify-content:center;
+    font-size:20px;font-weight:800;color:#fff;box-shadow:0 6px 18px rgba(56,130,246,.35);
+  }
+  .brand-name{font-size:17px;font-weight:700;letter-spacing:1px}
+  .brand-sub{font-size:11px;color:var(--muted);margin-top:2px;letter-spacing:1px}
+  .nav{display:flex;flex-direction:column;gap:4px;margin-top:6px}
+  .nav-item{
+    display:flex;align-items:center;gap:12px;width:100%;padding:11px 12px;
+    background:none;border:none;border-radius:10px;cursor:pointer;
+    color:var(--muted);font-size:14px;font-weight:500;text-align:left;
+    transition:background .15s,color .15s;
+  }
+  .nav-item svg{width:19px;height:19px;flex:0 0 19px}
+  .nav-item:hover{background:rgba(255,255,255,.04);color:var(--text)}
+  .nav-item.active{background:var(--accent-soft);color:var(--accent);font-weight:600}
+  .sidebar-foot{margin-top:auto;padding:12px 8px 2px;font-size:12px;color:var(--faint);display:flex;align-items:center;gap:8px}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);flex:0 0 8px}
+
+  /* ---------- 主区 ---------- */
+  .main{margin-left:220px;flex:1;min-width:0;display:flex;flex-direction:column}
+  .topbar{
+    position:sticky;top:0;z-index:10;display:flex;align-items:center;justify-content:space-between;gap:14px;
+    padding:16px 26px;background:rgba(11,15,23,.82);backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--border);flex-wrap:wrap;
+  }
+  .topbar-left{display:flex;align-items:center;gap:14px;min-width:0}
+  .topbar h1{font-size:20px;font-weight:700;letter-spacing:.5px}
+  .station-chip{
+    display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--accent);
+    background:var(--accent-soft);border:1px solid rgba(77,163,255,.3);
+    padding:4px 11px;border-radius:20px;white-space:nowrap;
+  }
+  .topbar-right{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .filter-label{font-size:13px;color:var(--muted)}
+  select#stationSelect{
+    background:var(--panel-2);border:1px solid var(--border);color:var(--text);
+    border-radius:9px;padding:8px 12px;font-size:13px;min-width:190px;max-width:260px;
+    outline:none;cursor:pointer;
+  }
+  select#stationSelect:focus{border-color:var(--accent)}
+  .updated{font-size:12px;color:var(--faint)}
+  .updated b{color:var(--muted);font-weight:600}
+
+  /* ---------- 移动端顶部 tab ---------- */
+  .mobile-tabs{
+    display:none;position:sticky;top:0;z-index:9;gap:6px;padding:10px 14px;
+    background:rgba(11,15,23,.92);backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--border);overflow-x:auto;
+  }
+  .mobile-tab{
+    flex:0 0 auto;padding:8px 16px;border-radius:20px;border:1px solid var(--border);
+    background:var(--panel-2);color:var(--muted);font-size:13px;cursor:pointer;white-space:nowrap;
+  }
+  .mobile-tab.active{background:var(--accent-soft);color:var(--accent);border-color:rgba(77,163,255,.35);font-weight:600}
+
+  .content{padding:22px 26px 40px;flex:1}
+  .panel{display:none;animation:fadein .25s ease}
+  .panel.active{display:block}
+  @keyframes fadein{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+  .status-banner{
+    display:none;margin:0 26px;padding:10px 14px;border-radius:10px;font-size:13px;
+    background:var(--yellow-soft);color:var(--yellow);border:1px solid rgba(242,181,68,.35);
+  }
+  .status-banner.error{background:var(--red-soft);color:var(--red);border-color:rgba(244,87,77,.35)}
+
+  /* ---------- KPI 大数字卡 ---------- */
+  .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:18px}
+  .kpi-grid-3{grid-template-columns:repeat(3,1fr)}
+  .kpi-card{
+    background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);
+    padding:18px 20px;box-shadow:var(--shadow);position:relative;overflow:hidden;
+  }
+  .kpi-card::after{
+    content:"";position:absolute;left:0;top:0;width:3px;height:100%;
+    background:linear-gradient(var(--accent),var(--accent-2));opacity:.9;
+  }
+  .kpi-card.danger::after{background:linear-gradient(var(--red),#ff8a5c)}
+  .kpi-card.warn::after{background:linear-gradient(var(--yellow),#ffd166)}
+  .kpi-label{font-size:13px;color:var(--muted);margin-bottom:10px}
+  .kpi-value{font-size:30px;font-weight:750;letter-spacing:-.5px;font-variant-numeric:tabular-nums;line-height:1.1}
+  .kpi-value .unit{font-size:14px;font-weight:500;color:var(--muted);margin-left:4px}
+  .kpi-card.danger .kpi-value{color:var(--red)}
+  .kpi-card.warn .kpi-value{color:var(--yellow)}
+  .kpi-sub{font-size:12px;color:var(--faint);margin-top:8px}
+
+  /* ---------- 卡片 / 网格 ---------- */
+  .card{
+    background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);
+    padding:16px 18px 12px;box-shadow:var(--shadow);margin-bottom:18px;
+  }
+  .card-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+  .card-head h3{font-size:15px;font-weight:650;letter-spacing:.3px}
+  .card-head .muted{font-size:12px}
+  .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px}
+  .grid-2>.card{margin-bottom:0}
+  .chart{width:100%;height:300px}
+  .chart-h{height:320px}
+  .empty-chart{height:100%;display:flex;align-items:center;justify-content:center;color:var(--faint);font-size:13px}
+
+  /* ---------- 表格 ---------- */
+  .table-wrap{overflow-x:auto;margin:2px 0 6px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{text-align:left;padding:9px 12px;color:var(--muted);font-weight:600;font-size:12px;border-bottom:1px solid var(--border);white-space:nowrap}
+  td{padding:10px 12px;border-bottom:1px solid var(--border-soft);color:var(--text);white-space:nowrap}
+  tbody tr{transition:background .12s}
+  tbody tr:hover{background:rgba(255,255,255,.035)}
+  tr.clickable{cursor:pointer}
+  td.num{text-align:right;font-variant-numeric:tabular-nums}
+  td.td-name{max-width:320px;overflow:hidden;text-overflow:ellipsis}
+  .mono{font-family:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;font-size:12px;color:var(--muted)}
+  .num.neg{color:var(--red);font-weight:600}
+  .num.warn{color:var(--yellow)}
+  .num.pos{color:var(--green)}
+
+  /* ---------- 标签 chip ---------- */
+  .chips{display:flex;gap:8px;flex-wrap:wrap}
+  .chip{display:inline-flex;align-items:center;padding:3px 11px;border-radius:20px;font-size:12px;font-weight:600;border:1px solid}
+  .chip-red{color:var(--red);background:var(--red-soft);border-color:rgba(244,87,77,.35)}
+  .chip-yellow{color:var(--yellow);background:var(--yellow-soft);border-color:rgba(242,181,68,.35)}
+  .chip-green{color:var(--green);background:var(--green-soft);border-color:rgba(52,201,142,.35)}
+  .chip-muted{color:var(--muted);background:rgba(138,148,168,.12);border-color:var(--border)}
+  .chip-accent{color:var(--accent);background:var(--accent-soft);border-color:rgba(77,163,255,.35)}
+
+  .empty{padding:26px;text-align:center;color:var(--faint);font-size:13px}
+  .muted{color:var(--muted)}
+  .accent{color:var(--accent)}
+
+  /* ---------- 按钮 ---------- */
+  .btn{
+    display:inline-flex;align-items:center;gap:8px;padding:10px 20px;border-radius:10px;
+    background:linear-gradient(135deg,#2563eb,#38bdf8);color:#fff;border:none;cursor:pointer;
+    font-size:14px;font-weight:600;box-shadow:0 6px 16px rgba(56,130,246,.3);
+  }
+  .btn:disabled{opacity:.45;cursor:not-allowed;box-shadow:none}
+  .btn-ghost{background:transparent;border:1px solid var(--border);color:var(--muted);box-shadow:none;font-weight:500}
+
+  .import-card p{font-size:13px;color:var(--muted);line-height:1.7;margin-bottom:14px;max-width:640px}
+  .seg{display:inline-flex;background:var(--panel-2);border:1px solid var(--border);border-radius:9px;padding:2px;gap:2px}
+  .seg-btn{padding:6px 14px;border:none;background:none;color:var(--muted);font-size:13px;border-radius:7px;cursor:pointer;white-space:nowrap}
+  .seg-btn.active{background:var(--accent-soft);color:var(--accent);font-weight:600}
+  .import-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+  .import-filename{font-size:13px;color:var(--muted);max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .import-result{font-size:13px;margin-bottom:10px;min-height:18px}
+  .import-result-ok{color:var(--text)}
+  .import-result-err{color:var(--red)}
+  .import-status{margin-top:14px;font-size:12px;color:var(--faint);line-height:1.7;border-top:1px solid var(--border-soft);padding-top:10px}
+
+  /* ---------- 盘点账式 ---------- */
+  .eq-card{padding:22px 20px 14px}
+  .eq{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  .eq-item{background:var(--panel-2);border:1px solid var(--border);border-radius:12px;padding:14px 18px;min-width:120px}
+  .eq-label{font-size:12px;color:var(--muted);margin-bottom:6px}
+  .eq-val{font-size:22px;font-weight:750;font-variant-numeric:tabular-nums}
+  .eq-op{font-size:22px;color:var(--faint);font-weight:600}
+  .eq-2{margin-top:14px}
+  .eq-foot{font-size:12px;color:var(--faint);margin-top:16px;line-height:1.7}
+
+  .drill-bar{display:flex;align-items:center;gap:14px;margin-bottom:16px;flex-wrap:wrap}
+  .drill-bar h2{font-size:19px;font-weight:700}
+
+  /* ---------- 响应式 ---------- */
+  @media(max-width:1180px){.kpi-grid{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:900px){
+    .sidebar{display:none}
+    .mobile-tabs{display:flex}
+    .main{margin-left:0}
+    .grid-2{grid-template-columns:1fr}
+    .content{padding:16px 14px 34px}
+    .topbar{padding:12px 14px}
+    select#stationSelect{min-width:150px}
+  }
+  @media(max-width:640px){
+    .kpi-grid,.kpi-grid-3{grid-template-columns:1fr}
+    .kpi-value{font-size:26px}
+    .topbar h1{font-size:17px}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-logo">金</div>
+      <div>
+        <div class="brand-name">金小存</div>
+        <div class="brand-sub">进销存管理</div>
+      </div>
+    </div>
+    <nav class="nav">
+      <button id="nav-overview" class="nav-item active" onclick="setTab('overview')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+        总览
+      </button>
+      <button id="nav-purchase" class="nav-item" onclick="setTab('purchase')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M3 17v2a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-2"/></svg>
+        进货
+      </button>
+      <button id="nav-sales" class="nav-item" onclick="setTab('sales')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21V9"/><path d="M7 14l5-5 5 5"/><path d="M3 17v2a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-2"/></svg>
+        销售
+      </button>
+      <button id="nav-inventory" class="nav-item" onclick="setTab('inventory')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5v8l9 5 9-5V8z"/><path d="M3 8l9 5 9-5"/><path d="M12 13v8"/></svg>
+        库存
+      </button>
+      <button id="nav-reconcile" class="nav-item" onclick="setTab('reconcile')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4.5V3h6v1.5"/><path d="M9 12l2 2 4-4"/></svg>
+        盘点
+      </button>
+    </nav>
+    <div class="sidebar-foot"><span class="dot"></span>数据自动刷新 · 30 秒</div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="topbar-left">
+        <h1 id="pageTitle">总览</h1>
+        <span id="stationChip" class="station-chip">全部油站</span>
+      </div>
+      <div class="topbar-right">
+        <label class="filter-label" for="stationSelect">油站</label>
+        <select id="stationSelect" onchange="setStation(this.value)"></select>
+        <span class="updated">更新于 <b id="updatedAt">-</b></span>
+      </div>
+    </header>
+
+    <nav class="mobile-tabs">
+      <button id="mtab-overview" class="mobile-tab active" onclick="setTab('overview')">总览</button>
+      <button id="mtab-purchase" class="mobile-tab" onclick="setTab('purchase')">进货</button>
+      <button id="mtab-sales" class="mobile-tab" onclick="setTab('sales')">销售</button>
+      <button id="mtab-inventory" class="mobile-tab" onclick="setTab('inventory')">库存</button>
+      <button id="mtab-reconcile" class="mobile-tab" onclick="setTab('reconcile')">盘点</button>
+    </nav>
+
+    <div id="statusBanner" class="status-banner"></div>
+
+    <section class="content">
+      <section id="panel-overview" class="panel active"></section>
+      <section id="panel-purchase" class="panel" style="display:none"></section>
+      <section id="panel-sales" class="panel" style="display:none"></section>
+      <section id="panel-inventory" class="panel" style="display:none"></section>
+      <section id="panel-reconcile" class="panel" style="display:none"></section>
+    </section>
+  </main>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+var M = null;
+var currentTab = 'overview';
+var currentStation = '__ALL__';
+var charts = {};
+var importKind = 'orders';   // orders | jituan
+var importFile = null;       // 选中的 File 对象
+var importing = false;
+var importState = null;      // GET /api/import-state 结果
+var importResultHtml = null; // 最近一次导入结果（跨重绘保留）
+
+var TAB_TITLES = { overview:'总览', purchase:'进货', sales:'销售', inventory:'库存', reconcile:'盘点' };
+var PANELS = ['overview','purchase','sales','inventory','reconcile'];
+
+var nf0 = new Intl.NumberFormat('zh-CN');
+function money(v){
+  var n = Math.round(Number(v)||0);
+  return (n<0?'-':'') + '¥' + nf0.format(Math.abs(n));
+}
+function num(v){ return nf0.format(Math.round(Number(v)||0)); }
+function fmtShort(v){
+  var n = Math.round(Number(v)||0);
+  var a = Math.abs(n);
+  if(a>=100000000) return (n/100000000).toFixed(1)+'亿';
+  if(a>=10000) return (n/10000).toFixed(1)+'万';
+  return String(n);
+}
+function esc(s){
+  return String(s==null?'':s).replace(/[&<>"']/g,function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+function el(id){ return document.getElementById(id); }
+function emptyDiv(msg){ return '<div class="empty">'+msg+'</div>'; }
+function table(heads, rowsHtml){
+  return '<div class="table-wrap"><table><thead><tr>'
+    + heads.map(function(h){return '<th>'+h+'</th>';}).join('')
+    + '</tr></thead><tbody>' + rowsHtml + '</tbody></table></div>';
+}
+function kpiCard(label, value, sub, tone){
+  return '<div class="kpi-card'+(tone?' '+tone:'')+'">'
+    + '<div class="kpi-label">'+label+'</div>'
+    + '<div class="kpi-value">'+value+'</div>'
+    + '<div class="kpi-sub">'+sub+'</div></div>';
+}
+
+function isAll(){ return currentStation === '__ALL__'; }
+function stationList(){ return (M && M.dynByStation || []).map(function(s){return s.station;}); }
+function filterStation(arr){
+  if(!arr) return [];
+  if(isAll()) return arr;
+  return arr.filter(function(x){return x.station===currentStation;});
+}
+
+/* ---------- ECharts 封装 ---------- */
+function setChart(id, opt){
+  if(typeof echarts==='undefined') return;
+  var node = el(id);
+  if(!node) return;
+  if(charts[id]){ if(charts[id].dispose) charts[id].dispose(); charts[id]=null; }
+  charts[id] = echarts.init(node);
+  charts[id].setOption(opt, {notMerge:true});
+}
+var AXIS_LABEL = {color:'#8a94a8'};
+var CAT_LABEL = {color:'#c6cede',fontSize:12};
+var SPLIT = {lineStyle:{color:'#1d2636'}};
+var AXIS_LINE = {lineStyle:{color:'#232c3d'}};
+
+/* ============================================================
+ * 总览
+ * ========================================================== */
+function renderOverview(){
+  var p = el('panel-overview'); if(!p) return;
+  var D = M.dynTotal || {};
+  var FT = M.flowTotal || {};
+  var st = M.dynByStation || [];
+  var lowCount = st.reduce(function(a,s){return a+(s.lowCount||0);},0);
+  var warnLen = (M.dynWarn||[]).length;
+  var reorder = reorderList();
+  var top = st.slice().sort(function(a,b){return b.amt-a.amt;}).slice(0,12);
+
+  p.innerHTML =
+    '<div class="kpi-grid">'
+    + kpiCard('库存金额', money(D.amt), (D.stations||0)+' 站 · '+(D.sku||0)+' SKU · 动态库存', '')
+    + kpiCard('在库数量', num(D.qty)+'<span class="unit">件</span>', '锚点 '+esc(D.anchorDate||'-')+' · 末笔流水 '+esc(D.lastFlowDate||'-'), '')
+    + kpiCard('缺货预警', num(lowCount)+'<span class="unit">件</span>', '低量(≤10)约 '+num(warnLen)+'+ 件', 'danger')
+    + kpiCard('销售出库', num(FT.outQty)+'<span class="unit">件</span>', '本月销售 '+num(M.salesQty)+' 件 · 入库 '+num(FT.inQty)+' 件', '')
+    + '</div>'
+    + '<div class="grid-2">'
+    +   '<div class="card"><div class="card-head"><h3>各站库存金额 TOP 12</h3></div><div id="chartStockTop" class="chart chart-h"></div></div>'
+    +   '<div class="card"><div class="card-head"><h3>各站进出库流水对比</h3></div><div id="chartFlow" class="chart chart-h"></div></div>'
+    + '</div>'
+    + '<div class="card">'
+    +   '<div class="card-head"><h3>该补货了</h3>'
+    +     '<div class="chips"><span class="chip chip-red">缺货 '+num(lowCount)+'</span><span class="chip chip-yellow">低量 '+num(warnLen)+'+</span></div>'
+    +   '</div>'
+    +   renderReorderTable(reorder)
+    + '</div>';
+
+  renderStockTopChart(top);
+  renderFlowChart();
+}
+
+function renderStockTopChart(top){
+  if(!top.length) return;
+  var y = top.map(function(s){return s.station;}).reverse();
+  var d = top.map(function(s){return s.amt;}).reverse();
+  setChart('chartStockTop', {
+    grid:{left:6,right:52,top:6,bottom:6,containLabel:true},
+    tooltip:{trigger:'axis',axisPointer:{type:'shadow'},valueFormatter:function(v){return '¥'+nf0.format(v);}},
+    xAxis:{type:'value',axisLabel:Object.assign({},AXIS_LABEL,{formatter:fmtShort}),splitLine:SPLIT},
+    yAxis:{type:'category',data:y,axisLabel:CAT_LABEL,axisLine:AXIS_LINE,axisTick:{show:false}},
+    series:[{type:'bar',data:d,barWidth:'58%',
+      itemStyle:{borderRadius:[0,6,6,0],color:new echarts.graphic.LinearGradient(0,0,1,0,[{offset:0,color:'#2563eb'},{offset:1,color:'#38bdf8'}])},
+      label:{show:true,position:'right',color:'#c6cede',formatter:function(p){return '¥'+fmtShort(p.value);}}
+    }]
+  });
+}
+
+function renderFlowChart(){
+  var sts = stationList();
+  var rows = sts.map(function(st){
+    var fi = (M.flowIn&&M.flowIn[st])||{};
+    var fo = (M.flowOut&&M.flowOut[st])||{};
+    return {station:st, inQty:fi.total||0, outQty:fo.total||0};
+  }).filter(function(x){return x.inQty||x.outQty;})
+    .sort(function(a,b){return (b.inQty+b.outQty)-(a.inQty+a.outQty);})
+    .slice(0,10).reverse();
+  var node = el('chartFlow');
+  if(!rows.length){ if(node) node.innerHTML='<div class="empty-chart">暂无流水数据</div>'; return; }
+  setChart('chartFlow', {
+    grid:{left:6,right:14,top:30,bottom:6,containLabel:true},
+    tooltip:{trigger:'axis',axisPointer:{type:'shadow'}},
+    legend:{top:0,right:0,textStyle:AXIS_LABEL,itemWidth:12,itemHeight:8},
+    xAxis:{type:'value',axisLabel:Object.assign({},AXIS_LABEL,{formatter:fmtShort}),splitLine:SPLIT},
+    yAxis:{type:'category',data:rows.map(function(r){return r.station;}),axisLabel:CAT_LABEL,axisLine:AXIS_LINE,axisTick:{show:false}},
+    series:[
+      {name:'入库',type:'bar',data:rows.map(function(r){return r.inQty;}),barWidth:'38%',itemStyle:{color:'#34c98e',borderRadius:[0,4,4,0]}},
+      {name:'出库',type:'bar',data:rows.map(function(r){return r.outQty;}),barWidth:'38%',itemStyle:{color:'#4da3ff',borderRadius:[0,4,4,0]}}
+    ]
+  });
+}
+
+function reorderList(){
+  var low = filterStation(M.dynLow||[]).map(function(x){return Object.assign({},x,{kind:'缺货'});});
+  var warn = filterStation(M.dynWarn||[]).map(function(x){return Object.assign({},x,{kind:'低量'});});
+  return low.concat(warn).sort(function(a,b){return a.qty-b.qty;}).slice(0,300);
+}
+function renderReorderTable(list){
+  if(!list.length) return emptyDiv('暂无缺货 / 低量预警');
+  var rows = list.map(function(x){
+    var bad = x.kind==='缺货';
+    return '<tr><td>'+esc(x.station)+'</td><td class="td-name" title="'+esc(x.name)+'">'+esc(x.name)+'</td>'
+      + '<td class="mono">'+esc(x.bar)+'</td>'
+      + '<td class="num '+(bad?'neg':'warn')+'">'+num(x.qty)+'</td>'
+      + '<td class="num">'+money(x.amt)+'</td>'
+      + '<td><span class="chip '+(bad?'chip-red':'chip-yellow')+'">'+x.kind+'</span></td></tr>';
+  }).join('');
+  return table(['站点','商品','条码','数量','金额','状态'], rows);
+}
+
+/* ============================================================
+ * 进货
+ * ========================================================== */
+function renderPurchase(){
+  var p = el('panel-purchase'); if(!p) return;
+  var FT = M.flowTotal || {};
+  var sup = M.supTop || [];
+  var fin = isAll()
+    ? (M.flowIn||{})
+    : (function(){ var o={}; o[currentStation]=(M.flowIn&&M.flowIn[currentStation])||{rows:0,purchase:0,adj:0,other:0,total:0}; return o; })();
+  var finRows = Object.keys(fin).map(function(st){return Object.assign({station:st},fin[st]);})
+    .sort(function(a,b){return b.total-a.total;});
+
+  p.innerHTML =
+    '<div class="kpi-grid">'
+    + kpiCard('入库总量', num(FT.inQty)+'<span class="unit">件</span>', '入库流水 '+num(FT.inRows)+' 行', '')
+    + kpiCard('本月进货', num(M.purchaseQty)+'<span class="unit">件</span>', '进销存账 · 进货列', '')
+    + kpiCard('供应商', num(sup.length)+'<span class="unit">家</span>', '商品字典 '+num(M.skuTotal)+' SKU', '')
+    + kpiCard('覆盖站点', num(Object.keys(M.flowIn||{}).length)+'<span class="unit">站</span>', '已录入入库流水的站点', '')
+    + '</div>'
+    + '<div class="grid-2">'
+    +   '<div class="card"><div class="card-head"><h3>各站入库</h3></div>'+renderFlowInTable(finRows)+'</div>'
+    +   '<div class="card"><div class="card-head"><h3>供应商商品分布 TOP</h3></div><div id="chartSup" class="chart chart-h"></div></div>'
+    + '</div>'
+    + '<div class="card import-card">'
+    +   '<div class="card-head"><h3>订货台账导入</h3>'
+    +     '<div class="seg">'
+    +       '<button id="importKindOrders" class="seg-btn'+(importKind==='orders'?' active':'')+'" onclick="setImportKind(\'orders\')">订货台账</button>'
+    +       '<button id="importKindJituan" class="seg-btn'+(importKind==='jituan'?' active':'')+'" onclick="setImportKind(\'jituan\')">服务集团购进</button>'
+    +     '</div>'
+    +   '</div>'
+    +   '<p>上传订货台账 / 集团购进 Excel（.xlsx），系统自动解析为入库单并写入进货流水。</p>'
+    +   '<div class="import-row">'
+    +     '<input type="file" id="importFile" accept=".xlsx,.xls" style="display:none" onchange="onImportFile(this)">'
+    +     '<button class="btn btn-ghost" onclick="document.getElementById(\'importFile\').click()">选择 Excel</button>'
+    +     '<span id="importFileName" class="import-filename">未选择文件</span>'
+    +     '<button id="importSubmit" class="btn" disabled onclick="doImport()">立即导入</button>'
+    +   '</div>'
+    +   '<div id="importResult" class="import-result"></div>'
+    +   '<div id="importStateBox" class="import-status"></div>'
+    + '</div>';
+
+  renderSupChart(sup);
+  renderImportControls();
+  renderImportState();
+  renderImportResultBox();
+}
+function renderFlowInTable(rows){
+  if(!rows.length) return emptyDiv('暂无入库流水');
+  var trs = rows.map(function(r){
+    return '<tr class="clickable" onclick="setStation(\''+esc(r.station)+'\')">'
+      + '<td>'+esc(r.station)+'</td><td class="num">'+num(r.total)+'</td><td class="num">'+num(r.purchase)+'</td>'
+      + '<td class="num">'+num(r.adj)+'</td><td class="num">'+num(r.other)+'</td><td class="num">'+num(r.rows)+'</td></tr>';
+  }).join('');
+  return table(['站点','入库总量','进货','调拨','其它','流水行数'], trs);
+}
+function renderSupChart(sup){
+  var top = sup.slice(0,10).reverse();
+  var node = el('chartSup');
+  if(!top.length){ if(node) node.innerHTML='<div class="empty-chart">暂无供应商数据</div>'; return; }
+  setChart('chartSup', {
+    grid:{left:6,right:40,top:6,bottom:6,containLabel:true},
+    tooltip:{trigger:'axis',axisPointer:{type:'shadow'}},
+    xAxis:{type:'value',axisLabel:AXIS_LABEL,splitLine:SPLIT},
+    yAxis:{type:'category',data:top.map(function(x){return x.supplier;}),axisLabel:CAT_LABEL,axisLine:AXIS_LINE,axisTick:{show:false}},
+    series:[{type:'bar',data:top.map(function(x){return x.count;}),barWidth:'55%',
+      itemStyle:{borderRadius:[0,6,6,0],color:'#4da3ff'},
+      label:{show:true,position:'right',color:'#c6cede'}}]
+  });
+}
+
+/* ---------- 订货台账导入（真实接口） ---------- */
+function setImportKind(k){
+  importKind = (k==='jituan') ? 'jituan' : 'orders';
+  var b1 = el('importKindOrders'), b2 = el('importKindJituan');
+  if(b1) b1.className = 'seg-btn'+(importKind==='orders'?' active':'');
+  if(b2) b2.className = 'seg-btn'+(importKind==='jituan'?' active':'');
+}
+function onImportFile(input){
+  importFile = (input && input.files && input.files[0]) ? input.files[0] : null;
+  importResultHtml = null;
+  var box = el('importResult'); if(box) box.innerHTML = '';
+  renderImportControls();
+}
+function renderImportResultBox(){
+  var box = el('importResult');
+  if(box) box.innerHTML = importResultHtml || '';
+}
+function showImportResult(html){
+  importResultHtml = html;
+  renderImportResultBox();
+}
+function renderImportControls(){
+  var fn = el('importFileName');
+  if(fn) fn.textContent = importFile ? importFile.name : '未选择文件';
+  var btn = el('importSubmit');
+  if(btn){
+    if(importing){ btn.disabled = true; btn.textContent = '导入中…'; }
+    else { btn.disabled = !importFile; btn.textContent = '立即导入'; }
+  }
+}
+function renderImportState(){
+  var box = el('importStateBox'); if(!box) return;
+  if(!importState || !importState.lastRun){
+    box.innerHTML = '<span class="muted">上次导入：暂无记录</span>';
+    return;
+  }
+  box.innerHTML = '上次导入 '+esc(importState.lastRun)
+    + ' · 导入 '+num(importState.imported)+' · 跳过 '+num(importState.skipped)
+    + ' · 未匹配 '+num(importState.unmatched);
+}
+function renderImportResult(j){
+  showImportResult('<div class="import-result-ok"><span class="chip chip-green">导入成功</span>'
+    + ' 导入 '+num(j.imported)+' · 跳过 '+num(j.skipped)+' · 未匹配 '+num(j.unmatched)+'</div>');
+}
+function renderImportError(msg){
+  showImportResult('<div class="import-result-err">'+esc(msg)+'</div>');
+}
+async function doImport(){
+  if(!importFile || importing) return;
+  importing = true;
+  renderImportControls();
+  var box = el('importResult');
+  if(box) box.innerHTML = '<div class="muted">正在导入…</div>';
+  try{
+    var resp = await fetch('/api/import?kind='+importKind, {method:'POST', body: importFile});
+    var j = await resp.json();
+    if(j && j.ok){
+      renderImportResult(j);
+      importFile = null;
+      var fi = el('importFile'); if(fi && fi.value!==undefined) fi.value = '';
+      loadImportState();
+      load();
+    } else {
+      renderImportError((j && j.error) || '导入失败');
+    }
+  }catch(e){
+    renderImportError('导入请求失败：'+(e&&e.message||e));
+  } finally {
+    importing = false;
+    renderImportControls();
+  }
+}
+async function loadImportState(){
+  try{
+    var resp = await fetch('/api/import-state');
+    var j = await resp.json();
+    importState = (j && typeof j==='object' && j.lastRun) ? j : null;
+  }catch(e){
+    importState = null;
+  }
+  renderImportState();
+}
+
+/* ============================================================
+ * 销售
+ * ========================================================== */
+function renderSales(){
+  var p = el('panel-sales'); if(!p) return;
+  var FT = M.flowTotal || {};
+  var sts = isAll() ? (M.stSales||[]) : (M.stSales||[]).filter(function(x){return x.station===currentStation;});
+  var fout = isAll()
+    ? (M.flowOut||{})
+    : (function(){ var o={}; o[currentStation]=(M.flowOut&&M.flowOut[currentStation])||{rows:0,sold:0,loss:0,adj:0,other:0,total:0}; return o; })();
+  var foutRows = Object.keys(fout).map(function(st){return Object.assign({station:st},fout[st]);})
+    .sort(function(a,b){return b.total-a.total;});
+
+  p.innerHTML =
+    '<div class="kpi-grid">'
+    + kpiCard('出库总量', num(FT.outQty)+'<span class="unit">件</span>', '出库流水 '+num(FT.outRows)+' 行', '')
+    + kpiCard('本月销售', num(M.salesQty)+'<span class="unit">件</span>', '进销存账 · 销售列', '')
+    + kpiCard('盘亏', num(M.lossQty)+'<span class="unit">件</span>', '金额 '+money(M.lossAmt), 'danger')
+    + kpiCard('盘点差异', num(M.diffTotal)+'<span class="unit">件</span>', '盘盈 '+num(M.diffGain)+' / 盘亏 '+num(Math.abs(M.diffLoss)), '')
+    + '</div>'
+    + '<div class="grid-2">'
+    +   '<div class="card"><div class="card-head"><h3>出库流水分类</h3></div><div id="chartOutType" class="chart chart-h"></div></div>'
+    +   '<div class="card"><div class="card-head"><h3>各站销售</h3></div>'+renderStSalesTable(sts)+'</div>'
+    + '</div>'
+    + '<div class="card"><div class="card-head"><h3>各站出库流水</h3></div>'+renderFlowOutTable(foutRows)+'</div>';
+
+  renderOutTypeChart(fout);
+}
+function renderOutTypeChart(fout){
+  var agg = {销售:0,盘亏:0,调拨:0,其它:0};
+  Object.keys(fout).forEach(function(st){ var o=fout[st];
+    agg.销售 += o.sold||0; agg.盘亏 += o.loss||0; agg.调拨 += o.adj||0; agg.其它 += o.other||0; });
+  var total = agg.销售+agg.盘亏+agg.调拨+agg.其它;
+  var node = el('chartOutType');
+  if(!total){ if(node) node.innerHTML='<div class="empty-chart">暂无出库流水</div>'; return; }
+  var data = [
+    {name:'销售',value:agg.销售,itemStyle:{color:'#4da3ff'}},
+    {name:'盘亏',value:agg.盘亏,itemStyle:{color:'#f4574d'}},
+    {name:'调拨',value:agg.调拨,itemStyle:{color:'#f2b544'}},
+    {name:'其它',value:agg.其它,itemStyle:{color:'#8a94a8'}}
+  ];
+  setChart('chartOutType', {
+    tooltip:{trigger:'item',valueFormatter:function(v){return nf0.format(v);}},
+    legend:{bottom:0,textStyle:AXIS_LABEL,itemWidth:12,itemHeight:8},
+    series:[{type:'pie',radius:['45%','70%'],center:['50%','43%'],
+      itemStyle:{borderColor:'#141a26',borderWidth:2},
+      label:{color:'#c6cede',formatter:'{b}\n{c}'},data:data}]
+  });
+}
+function renderStSalesTable(sts){
+  if(!sts.length) return emptyDiv('暂无销售数据');
+  var trs = sts.map(function(r){
+    return '<tr class="clickable" onclick="setStation(\''+esc(r.station)+'\')">'
+      + '<td>'+esc(r.station)+'</td><td class="num">'+money(r.sales)+'</td><td class="num">'+num(r.sold)+'</td>'
+      + '<td class="num '+(r.diff>0?'pos':(r.diff<0?'neg':''))+'">'+(r.diff>0?'+':'')+num(r.diff)+'</td>'
+      + '<td class="num">'+num(r.count)+'</td></tr>';
+  }).join('');
+  return table(['站点','销售金额','销售件数','差异','盘点行数'], trs);
+}
+function renderFlowOutTable(rows){
+  if(!rows.length) return emptyDiv('暂无出库流水');
+  var trs = rows.map(function(r){
+    return '<tr class="clickable" onclick="setStation(\''+esc(r.station)+'\')">'
+      + '<td>'+esc(r.station)+'</td><td class="num">'+num(r.total)+'</td><td class="num">'+num(r.sold)+'</td>'
+      + '<td class="num '+(r.loss?'neg':'')+'">'+num(r.loss)+'</td><td class="num">'+num(r.adj)+'</td>'
+      + '<td class="num">'+num(r.other)+'</td><td class="num">'+num(r.rows)+'</td></tr>';
+  }).join('');
+  return table(['站点','出库总量','销售','盘亏','调拨','其它','行数'], trs);
+}
+
+/* ============================================================
+ * 库存
+ * ========================================================== */
+function renderInventory(){
+  var p = el('panel-inventory'); if(!p) return;
+  if(!isAll()){ renderInventoryDetail(p); return; }
+  var D = M.dynTotal || {};
+  var st = M.dynByStation || [];
+  var lowCount = st.reduce(function(a,s){return a+(s.lowCount||0);},0);
+  var low = M.dynLow||[], warn = M.dynWarn||[];
+
+  p.innerHTML =
+    '<div class="kpi-grid">'
+    + kpiCard('动态库存金额', money(D.amt), (D.stations||0)+' 站 · '+(D.sku||0)+' SKU', '')
+    + kpiCard('动态库存量', num(D.qty)+'<span class="unit">件</span>', '锚点 '+esc(D.anchorDate||'-'), '')
+    + kpiCard('缺货 SKU', num(lowCount)+'<span class="unit">个</span>', '当前库存 ≤ 0', 'danger')
+    + kpiCard('低量 SKU', num(warn.length)+'+<span class="unit">个</span>', '0 < 库存 ≤ 10（前300条）', 'warn')
+    + '</div>'
+    + '<div class="card"><div class="card-head"><h3>动态库存 · 站级</h3><span class="muted">点击行查看该站商品明细</span></div>'
+    + renderDynStationTable(st) + '</div>'
+    + '<div class="grid-2">'
+    +   '<div class="card"><div class="card-head"><h3>缺货清单（≤0）</h3><span class="chip chip-red">'+num(low.length)+'+</span></div>'+renderLowTable(low,'缺货')+'</div>'
+    +   '<div class="card"><div class="card-head"><h3>低量清单（1–10）</h3><span class="chip chip-yellow">'+num(warn.length)+'+</span></div>'+renderLowTable(warn,'低量')+'</div>'
+    + '</div>';
+}
+function renderDynStationTable(st){
+  if(!st.length) return emptyDiv('暂无库存数据');
+  var trs = st.map(function(r){
+    return '<tr class="clickable" onclick="setStation(\''+esc(r.station)+'\')">'
+      + '<td>'+esc(r.station)+'</td><td class="num">'+num(r.qty)+'</td><td class="num">'+money(r.amt)+'</td>'
+      + '<td class="num">'+num(r.sku)+'</td><td class="num '+(r.lowCount?'neg':'')+'">'+num(r.lowCount)+'</td></tr>';
+  }).join('');
+  return table(['站点','库存量','库存金额','SKU','缺货'], trs);
+}
+function renderLowTable(list, kind){
+  var bad = kind==='缺货';
+  if(!list.length) return emptyDiv('暂无'+kind+'商品');
+  var trs = list.map(function(x){
+    return '<tr><td>'+esc(x.station)+'</td><td class="td-name" title="'+esc(x.name)+'">'+esc(x.name)+'</td>'
+      + '<td class="mono">'+esc(x.bar)+'</td>'
+      + '<td class="num '+(bad?'neg':'warn')+'">'+num(x.qty)+'</td>'
+      + '<td class="num">'+money(x.amt)+'</td></tr>';
+  }).join('');
+  return table(['站点','商品','条码','数量','金额'], trs);
+}
+function renderInventoryDetail(p){
+  var st = currentStation;
+  var skus = (M.dynSkuByStation&&M.dynSkuByStation[st])||[];
+  var agg = (M.dynByStation||[]).filter(function(x){return x.station===st;})[0] || {qty:0,amt:0,sku:0,lowCount:0};
+  p.innerHTML =
+    '<div class="drill-bar">'
+    + '<button class="btn btn-ghost" onclick="setStation(\'__ALL__\')">← 返回全部站点</button>'
+    + '<h2>'+esc(st)+'</h2><span class="muted">商品明细 · 按金额降序</span>'
+    + '</div>'
+    + '<div class="kpi-grid kpi-grid-3">'
+    + kpiCard('库存量', num(agg.qty)+'<span class="unit">件</span>', '', '')
+    + kpiCard('库存金额', money(agg.amt), '', '')
+    + kpiCard('SKU / 缺货', num(agg.sku)+' / '+num(agg.lowCount), '', agg.lowCount?'danger':'')
+    + '</div>'
+    + '<div class="card"><div class="card-head"><h3>商品明细</h3><span class="muted">'+num(skus.length)+' 条</span></div>'
+    + renderSkuDetailTable(skus) + '</div>';
+}
+function renderSkuDetailTable(skus){
+  if(!skus.length) return emptyDiv('该站暂无商品明细');
+  var trs = skus.map(function(x){
+    return '<tr><td class="td-name" title="'+esc(x.name)+'">'+esc(x.name)+'</td><td class="mono">'+esc(x.bar)+'</td>'
+      + '<td class="num '+(x.qty<=0?'neg':'')+'">'+num(x.qty)+'</td><td class="num">'+money(x.amt)+'</td></tr>';
+  }).join('');
+  return table(['商品','条码','数量','金额'], trs);
+}
+
+/* ============================================================
+ * 盘点
+ * ========================================================== */
+function renderReconcile(){
+  var p = el('panel-reconcile'); if(!p) return;
+  var T = M.ledgerTotal || {};
+  var open = T.open||0, adjIn = T.adjIn||0, purchase = T.purchase||0, adjOut = T.adjOut||0, sold = T.sold||0;
+  var theo = T.theo||0, actual = T.actual||0, diff = T.diff||0;
+  var inflow = purchase + adjIn, outflow = sold + adjOut;
+  var led = M.ledger||[];
+  var items = isAll()
+    ? mergeLedgerItems()
+    : ((M.ledgerByStation&&M.ledgerByStation[currentStation])||[]).map(function(x){return Object.assign({station:currentStation},x);});
+
+  p.innerHTML =
+    '<div class="card eq-card">'
+    + '<div class="eq">'
+    +   '<div class="eq-item"><div class="eq-label">期初</div><div class="eq-val">'+num(open)+'</div></div>'
+    +   '<div class="eq-op">+</div>'
+    +   '<div class="eq-item"><div class="eq-label">进 · 采购 '+num(purchase)+' + 调入 '+num(adjIn)+'</div><div class="eq-val accent">'+num(inflow)+'</div></div>'
+    +   '<div class="eq-op">−</div>'
+    +   '<div class="eq-item"><div class="eq-label">销 · 销售 '+num(sold)+' + 调出 '+num(adjOut)+'</div><div class="eq-val">'+num(outflow)+'</div></div>'
+    +   '<div class="eq-op">=</div>'
+    +   '<div class="eq-item"><div class="eq-label">理论库存</div><div class="eq-val accent">'+num(theo)+'</div></div>'
+    + '</div>'
+    + '<div class="eq eq-2">'
+    +   '<div class="eq-item"><div class="eq-label">实盘库存</div><div class="eq-val">'+num(actual)+'</div></div>'
+    +   '<div class="eq-op">→</div>'
+    +   '<div class="eq-item"><div class="eq-label">差异 · 盘亏 '+num(T.lossQty)+' 件 / '+money(T.lossAmt)+'</div>'
+    +     '<div class="eq-val '+(diff<0?'neg':(diff>0?'pos':''))+'">'+(diff>0?'+':'')+num(diff)+'</div></div>'
+    + '</div>'
+    + '<div class="eq-foot">账式：期初 + 进 − 销 = 理论；理论 − 实盘 = 差异（负为盘亏）。共 '+num(T.rows)+' 行。</div>'
+    + '</div>'
+    + renderShelfStoreCard()
+    + renderShelfStoreDynCard()
+    + '<div class="grid-2">'
+    +   '<div class="card"><div class="card-head"><h3>差异类型分布</h3></div><div id="chartDiffType" class="chart chart-h"></div></div>'
+    +   '<div class="card"><div class="card-head"><h3>各站进销存账</h3></div>'+renderLedgerTable(led)+'</div>'
+    + '</div>'
+    + '<div class="card"><div class="card-head"><h3>差异明细</h3><span class="muted">盘亏 / 盘点缺失 / 期末未扣销售 · 账实相符不列</span></div>'
+    + renderLedgerItemsTable(items) + '</div>';
+
+  renderDiffTypeChart();
+}
+function renderShelfStoreCard(){
+  var ST = M.shelfStoreTotal || {};
+  var shelf = ST.shelf||0, store = ST.store||0, actual = ST.actual||0, gap = ST.gap||0;
+  var filled = ST.filled||0, rows = ST.rows||0;
+  var pct = rows ? Math.round(filled/rows*100) : 0;
+  var notStarted = filled === 0;
+  var by = isAll() ? (M.shelfStoreByStation||[]) : filterStation(M.shelfStoreByStation||[]);
+  var flat = gap===0;
+  return '<div class="card">'
+    + '<div class="card-head"><h3>在架 / 库房拆分</h3><span class="muted">盘点时货架与库房分开数 · 在架 + 库房 应 = 实盘</span></div>'
+    + '<div class="kpi-grid">'
+    +   kpiCard('在架数量', num(shelf)+'<span class="unit">件</span>', '货架上实盘数')
+    +   kpiCard('库房数量', num(store)+'<span class="unit">件</span>', '库房里实盘数')
+    +   kpiCard('实盘合计', num(actual)+'<span class="unit">件</span>', '期末实盘')
+    +   kpiCard('校验', notStarted?'尚未填写':(flat?'已对平':'差 '+num(gap)+' 件'),
+        notStarted?'盘点表新增两列后填写':('已填 '+pct+'% · '+filled+'/'+rows+' 行'), notStarted?'':(flat?'':'danger'))
+    + '</div>'
+    + renderShelfStoreTable(by, notStarted)
+    + '</div>';
+}
+function renderShelfStoreTable(by, notStarted){
+  if(!by.length) return emptyDiv('暂无在架/库房数据');
+  var trs = by.map(function(r){
+    var g = r.gap||0;
+    var gapCell = notStarted ? '<td class="num muted">—</td>'
+      : '<td class="num '+(g<0?'neg':(g>0?'pos':''))+'">'+(g>0?'+':'')+num(g)+'</td>';
+    return '<tr'+(isAll()?' class="clickable" onclick="setStation(\''+esc(r.station)+'\')"':'')+'>'
+      + '<td>'+esc(r.station)+'</td><td class="num">'+num(r.shelf)+'</td><td class="num">'+num(r.store)+'</td>'
+      + '<td class="num">'+num(r.actual)+'</td>'+gapCell+'</tr>';
+  }).join('');
+  return table(['站点','在架','库房','实盘','差'], trs);
+}
+function renderShelfStoreDynCard(){
+  var DT = M.shelfStoreDynTotal || {};
+  var pending = !!DT.pending;
+  var shelf = DT.shelf||0, store = DT.store||0, up = DT.up||0, down = DT.down||0, loss = DT.loss||0;
+  var moveRows = DT.moveRows||0, baseSource = DT.baseSource||'';
+  var by = isAll() ? (M.shelfStoreDynByStation||[]) : filterStation(M.shelfStoreDynByStation||[]);
+  return '<div class="card">'
+    + '<div class="card-head"><h3>货架 / 库房动态账</h3><span class="muted">扫码上架实时流转 · '+(pending?'<b>待期初盘点</b> · 盘点表填 EC/ED 后自动激活':'基准='+esc(baseSource||'-'))+' · 移库 '+num(moveRows)+' 笔</span></div>'
+    + '<div class="kpi-grid">'
+    +   kpiCard('货架库存', pending?'<span class="muted">待盘点</span>':num(shelf)+'<span class="unit">件</span>', pending?'期初盘点后激活':'货架上实时数')
+    +   kpiCard('库房库存', pending?'<span class="muted">待盘点</span>':num(store)+'<span class="unit">件</span>', pending?'期初盘点后激活':'库房里实时数')
+    +   kpiCard('累计上架', num(up)+'<span class="unit">件</span>', '库房→货架')
+    +   kpiCard('下架/报损', num(down)+' / '+num(loss)+'<span class="unit">件</span>', '下架 / 报损')
+    + '</div>'
+    + renderShelfStoreDynTable(by, pending)
+    + '</div>';
+}
+function renderShelfStoreDynTable(by, pending){
+  if(!by.length) return emptyDiv(pending?'暂无移库数据（扫码上架后自动出现）':'暂无移库数据');
+  var trs = by.map(function(r){
+    var shelfCell = pending ? '<td class="num muted">—</td>' : '<td class="num">'+num(r.shelf)+'</td>';
+    var storeCell = pending ? '<td class="num muted">—</td>' : '<td class="num">'+num(r.store)+'</td>';
+    return '<tr'+(isAll()?' class="clickable" onclick="setStation(\''+esc(r.station)+'\')"':'')+'>'
+      + '<td>'+esc(r.station)+'</td>'+shelfCell+storeCell
+      + '<td class="num">'+num(r.up)+'</td><td class="num">'+num(r.down)+'</td><td class="num">'+num(r.loss)+'</td>'
+      + '<td class="num">'+num(r.saleIn)+'</td><td class="num">'+num(r.purchaseIn)+'</td></tr>';
+  }).join('');
+  return table(['站点','货架','库房','上架','下架','报损','销售','进货'], trs);
+}
+function mergeLedgerItems(){
+  var out = [];
+  var map = M.ledgerByStation||{};
+  Object.keys(map).forEach(function(st){ (map[st]||[]).forEach(function(it){ out.push(Object.assign({station:st},it)); }); });
+  return out.sort(function(a,b){return Math.abs(b.diff)-Math.abs(a.diff);}).slice(0,300);
+}
+function chipForType(t){
+  if(t==='盘亏') return 'chip-red';
+  if(t==='期末未扣销售') return 'chip-yellow';
+  if(t==='盘点缺失') return 'chip-muted';
+  return 'chip';
+}
+function renderLedgerTable(led){
+  if(!led.length) return emptyDiv('暂无进销存账');
+  var trs = led.map(function(r){
+    return '<tr class="clickable" onclick="setStation(\''+esc(r.station)+'\')">'
+      + '<td>'+esc(r.station)+'</td><td class="num">'+num(r.open)+'</td><td class="num">'+num(r.purchase)+'</td>'
+      + '<td class="num">'+num(r.sold)+'</td><td class="num">'+num(r.theo)+'</td><td class="num">'+num(r.actual)+'</td>'
+      + '<td class="num '+(r.diff<0?'neg':(r.diff>0?'pos':''))+'">'+(r.diff>0?'+':'')+num(r.diff)+'</td></tr>';
+  }).join('');
+  return table(['站点','期初','进货','销售','理论','实盘','差异'], trs);
+}
+function renderLedgerItemsTable(items){
+  if(!items.length) return emptyDiv('暂无差异明细');
+  var trs = items.map(function(x){
+    return '<tr><td>'+esc(x.station)+'</td><td class="td-name" title="'+esc(x.name)+'">'+esc(x.name)+'</td>'
+      + '<td class="mono">'+esc(x.bar)+'</td><td><span class="chip '+chipForType(x.type)+'">'+esc(x.type)+'</span></td>'
+      + '<td class="num">'+num(x.open)+'</td><td class="num">'+num(x.purchase)+'</td><td class="num">'+num(x.sold)+'</td>'
+      + '<td class="num">'+num(x.actual)+'</td>'
+      + '<td class="num '+(x.diff<0?'neg':(x.diff>0?'pos':''))+'">'+(x.diff>0?'+':'')+num(x.diff)+'</td></tr>';
+  }).join('');
+  return table(['站点','商品','条码','类型','期初','进货','销售','实盘','差异'], trs);
+}
+function renderDiffTypeChart(){
+  var dt = M.diffType||{};
+  var colorMap = {'账实相符':'#34c98e','盘亏':'#f4574d','期末未扣销售':'#f2b544','盘点缺失':'#8a94a8'};
+  var data = Object.keys(dt).map(function(k){return {name:k,value:dt[k],itemStyle:{color:colorMap[k]||'#4da3ff'}};});
+  var node = el('chartDiffType');
+  if(!data.length){ if(node) node.innerHTML='<div class="empty-chart">暂无差异数据</div>'; return; }
+  setChart('chartDiffType', {
+    tooltip:{trigger:'item'},
+    legend:{bottom:0,textStyle:AXIS_LABEL,itemWidth:12,itemHeight:8},
+    series:[{type:'pie',radius:['40%','68%'],center:['50%','43%'],
+      itemStyle:{borderColor:'#141a26',borderWidth:2},
+      label:{color:'#c6cede',formatter:'{b}\n{c}'},data:data}]
+  });
+}
+
+/* ============================================================
+ * 面板调度 / 状态
+ * ========================================================== */
+function showPanel(tab){
+  PANELS.forEach(function(t){
+    var node = el('panel-'+t);
+    if(node) node.style.display = (t===tab) ? '' : 'none';
+  });
+}
+function renderPanel(tab){
+  showPanel(tab);
+  if(!M) return;
+  if(tab==='overview') renderOverview();
+  else if(tab==='purchase') renderPurchase();
+  else if(tab==='sales') renderSales();
+  else if(tab==='inventory') renderInventory();
+  else if(tab==='reconcile') renderReconcile();
+}
+function updateHeader(){
+  var t = el('pageTitle'); if(t) t.textContent = TAB_TITLES[currentTab]||'总览';
+  var u = el('updatedAt');
+  if(u) u.textContent = (M&&M.generatedAt) ? formatTime(M.generatedAt) : '-';
+  var sc = el('stationChip');
+  if(sc) sc.textContent = isAll() ? '全部油站' : currentStation;
+}
+function formatTime(iso){
+  try{ var d = new Date(iso); return d.toLocaleString('zh-CN',{hour12:false}); }
+  catch(e){ return String(iso); }
+}
+function populateStationSelect(){
+  var sel = el('stationSelect'); if(!sel) return;
+  var list = stationList();
+  var cur = isAll() ? '__ALL__' : (list.indexOf(currentStation)>=0 ? currentStation : '__ALL__');
+  var html = '<option value="__ALL__">全部油站（'+list.length+'）</option>';
+  html += list.map(function(s){return '<option value="'+esc(s)+'"'+(s===cur?' selected':'')+'>'+esc(s)+'</option>';}).join('');
+  sel.innerHTML = html;
+  currentStation = cur;
+}
+function showStatus(msg, isError){
+  var node = el('statusBanner'); if(!node) return;
+  node.textContent = msg||'';
+  node.style.display = msg ? '' : 'none';
+  node.className = 'status-banner'+(isError?' error':'');
+}
+
+function setTab(tab){
+  if(!TAB_TITLES[tab]) tab = 'overview';
+  currentTab = tab;
+  PANELS.forEach(function(t){
+    var b1 = el('nav-'+t); if(b1) b1.className = (t===tab)?'nav-item active':'nav-item';
+    var b2 = el('mtab-'+t); if(b2) b2.className = (t===tab)?'mobile-tab active':'mobile-tab';
+  });
+  updateHeader();
+  renderPanel(tab);
+}
+function setStation(st){
+  currentStation = st || '__ALL__';
+  populateStationSelect();
+  updateHeader();
+  renderPanel(currentTab);
+}
+function render(){
+  if(!M) return;
+  populateStationSelect();
+  updateHeader();
+  renderPanel(currentTab);
+}
+
+async function load(){
+  try{
+    var res = await fetch('/api/metrics');
+    var j = await res.json();
+    if(j && j.error){ showStatus('数据加载失败：'+j.error, true); return; }
+    M = j;
+    showStatus('', false);
+    render();
+  }catch(e){
+    showStatus('数据加载失败：'+(e&&e.message||e), true);
+  }
+}
+
+/* 暴露给测试 / 控制台 */
+globalThis.setTab = setTab;
+globalThis.setStation = setStation;
+globalThis.setImportKind = setImportKind;
+globalThis.onImportFile = onImportFile;
+globalThis.doImport = doImport;
+globalThis.setImportFile = function(fileObj){ importFile = fileObj || null; renderImportControls(); };
+globalThis.getMetrics = function(){ return M; };
+globalThis.getImportState = function(){ return importState; };
+globalThis.getState = function(){ return {tab:currentTab, station:currentStation, importKind:importKind}; };
+
+/* 启动 */
+render();
+load();
+loadImportState();
+setInterval(load, 30000);
+setInterval(loadImportState, 60000);
+
+})();
+</script>
+</body>
+</html>
