@@ -31,12 +31,12 @@
 ```
 server.js                 # 聚合引擎（拉金山多维表 + 算指标）。被 relay.js require 时不会启动 HTTP 服务
 relay.js                  # 无服务器中继：复用 server.js 引擎 → 加密 → 产出 site/
+deploy_gh.js              # 一键上线脚本：建仓→推码→设 Secrets→开 Pages→触发同步（幂等，可复跑）
 index.html                # 静态口令看板（READONLY 模式，隐藏导入 UI）
 vendor/echarts.min.js     # 图表库（本地，免 CDN）
 .github/workflows/sync.yml# 每 15 分钟 + 手动触发，跑 relay.js 并部署 Pages
+TROUBLESHOOTING.md        # 排错手册（打不开/口令/数据不一致/回滚/重部署）
 package.json              # 仅占位（零第三方依赖）
-wps_token.example.txt     # （已删除）旧 PaaS 占位，现改用 Secrets
-railway.json / render.yaml# （已删除）旧 PaaS 配置
 ```
 
 > 本项目**零 npm 依赖**：server.js / relay.js 只用 Node 内置模块，CI 无需 `npm install`。
@@ -51,7 +51,24 @@ node relay.js            # 产出 ./site/，本地用任何静态服务器打开
 
 ## 上线步骤（GitHub，需仓库管理员权限 / PAT）
 
-1. 创建**私有**仓库（公开也可，数据已加密），例如 `jinxiaocun-cockpit`。
+### 一键上线（推荐）
+
+准备好一个 **classic 令牌**（勾 `repo` + `workflow`，[点此预勾](https://github.com/settings/tokens/new?scopes=repo,workflow&description=jinxiaocun-cockpit)），然后：
+
+```bash
+cd deploy_cloud
+NODE_PATH="C:/Users/DELL/.workbuddy/binaries/node/workspace/node_modules" \
+  GH_TOKEN=<你的classic令牌> \
+  node deploy_gh.js
+```
+
+`deploy_gh.js` 会自动：改 `GH_REPO` → 建私有仓库 → 推 `main` → 设 `KDOCS_TOKEN`/`RELAY_PASS` 两个 Secret → 开 Pages(GitHub Actions) → 触发一次同步，并打印看板网址和口令。不提供 `RELAY_PASS` 会自动生成强口令并存到 `看板口令.txt`。
+
+> 未装 libsodium 时脚本会退化成「打印网页手动填 Secret 的步骤」，不影响其余自动化。
+
+### 手动上线（脚本失败时的备选）
+
+1. 创建**私有**仓库，例如 `jinxiaocun-cockpit`。
 2. 仓库 **Settings → Secrets and variables → Actions** 添加两个 Secret：
    - `KDOCS_TOKEN` = 金山 WPS access token
    - `RELAY_PASS`  = 看板查看口令（分发给查看者）

@@ -3,6 +3,9 @@ wps_token.txt
 .env
 .env.*
 *.local
+看板口令.txt
+*_probe_*.json
+*_probe_*.txt
 
 # ===== 依赖 / 产物 =====
 node_modules/
