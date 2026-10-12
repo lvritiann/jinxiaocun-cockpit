@@ -806,6 +806,7 @@ server.on('error',function(err){
   else { console.error(err); process.exit(1); }
 });
 
+if(require.main===module){
 server.listen(PORT,'0.0.0.0',()=>{
   console.log('✅ 进销存实时驾驶舱已启动，监听 0.0.0.0:'+PORT);
   console.log('   后台每 '+(REFRESH_MS/1000)+' 秒异步刷新动态数据；前端每30秒读缓存（不再卡顿）');
@@ -817,3 +818,9 @@ server.listen(PORT,'0.0.0.0',()=>{
     .catch(()=>{})
     .then(()=>{ refresh(); setInterval(refresh,REFRESH_MS); setInterval(refreshRef,REF_REFRESH_MS); setInterval(refreshFlow,REF_FLOW_MS); });
 });
+}
+
+/* 导出聚合引擎给中继脚本(relay.mjs)复用；被 require 时不会启动 HTTP 服务 */
+if(typeof module!=='undefined' && module.exports){
+  module.exports={ buildMetrics, refreshRef, refreshFlow, callTool, call, dumpAll, LINK };
+}

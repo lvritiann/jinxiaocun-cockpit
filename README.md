@@ -1,60 +1,67 @@
-# 金小存 · 高速延长加油站进销存驾驶舱（云端部署版）
+# 金小存 · 高速延长加油站进销存驾驶舱（无服务器架构）
 
-进销存（进/销/存/盘）四条主线的实时驾驶舱。后端 Node.js 直连金山文档 API（mcp-center），
-无需本机 kdocs-cli / 系统密钥链；前端为单页看板（ECharts）。
+进销存（进 / 销 / 存 / 盘）四条主线的实时驾驶舱。**无服务器、无常驻进程**——完全对齐「订货工具」项目的架构：
+
+```
+金山在线多维表 (Kdocs)  ──真源──▶  GitHub Actions 中继(relay.js)
+                                         │  ① 拉数据 + 算指标
+                                         │  ② AES-256-GCM 加密
+                                         ▼
+                                   site/ (index.html + metrics.json加密 + echarts)
+                                         │  upload-pages-artifact
+                                         ▼
+                               GitHub Pages 静态看板（浏览器输口令解密）
+```
+
+- **数据库** = 金山在线多维表（唯一真源，靠 `KDOCS_TOKEN` 直连）
+- **读链路** = GitHub Actions 每 15 分钟跑 `relay.js` → 拉金山、算指标、AES 加密 → 部署到 Pages（**没有常驻服务器**）
+- **看板** = 单文件静态 `index.html`，托管在 GitHub Pages，浏览器端输口令用 Web Crypto 解密
+- **写回（v2）** = 网页「立即同步 / 写回」按钮触发 `workflow_dispatch` → Actions 调 AirScript 写回金山（本期只读先行，暂未开放）
+
+> 为什么必须有无 Origin 中继？浏览器直连金山会被 403（无 CORS 头）。所以所有金山读写都走 Actions 服务端（无 Origin 头），浏览器只碰 GitHub。
+
+## 数据保密
+
+- `metrics.json` 在产出时用 `RELAY_PASS` 派生密钥做 **AES-256-GCM** 加密（`iv[12] + authTag[16] + 密文`，base64）。
+- 口令不对 → GCM 校验失败 → 解不开，数据不公开。即使 Pages 是公开 URL，看到的也只是密文。
+- 金山 token（`KDOCS_TOKEN`）和口令（`RELAY_PASS`）**只存在仓库 Secrets**，绝不进代码 / 不进 git 历史。
 
 ## 目录结构
 
 ```
-server.js              # 后端：聚合金山多维表 + 托管前端 + 写回 SKU 明细
-index.html             # 前端看板
-vendor/echarts.min.js  # 图表库（本地，免 CDN）
-package.json           # start: node server.js
-metrics.json           # 服务端缓存的聚合指标（运行时生成）
-wps_token.example.txt  # token 占位说明（真实 token 见 wps_token.txt，已 .gitignore 排除）
-railway.json           # Railway 部署配置
-render.yaml            # Render 部署配置
+server.js                 # 聚合引擎（拉金山多维表 + 算指标）。被 relay.js require 时不会启动 HTTP 服务
+relay.js                  # 无服务器中继：复用 server.js 引擎 → 加密 → 产出 site/
+index.html                # 静态口令看板（READONLY 模式，隐藏导入 UI）
+vendor/echarts.min.js     # 图表库（本地，免 CDN）
+.github/workflows/sync.yml# 每 15 分钟 + 手动触发，跑 relay.js 并部署 Pages
+package.json              # 仅占位（零第三方依赖）
+wps_token.example.txt     # （已删除）旧 PaaS 占位，现改用 Secrets
+railway.json / render.yaml# （已删除）旧 PaaS 配置
 ```
 
-## 运行依赖
+> 本项目**零 npm 依赖**：server.js / relay.js 只用 Node 内置模块，CI 无需 `npm install`。
 
-- Node.js（任意 18+ 版本，本项目零第三方依赖，仅用内置模块）
-- 一个有效的 WPS / 金山文档 access token（环境变量 `KDOCS_TOKEN` 或项目根 `wps_token.txt`）
-
-## 本地运行
+## 本地运行（调试用，可选）
 
 ```bash
-# 方式一：token 放环境变量
 export KDOCS_TOKEN=<你的token>
-node server.js
-
-# 方式二：token 放 wps_token.txt（已被 .gitignore 排除，不会入库）
-node server.js
+export RELAY_PASS=<看板口令>
+node relay.js            # 产出 ./site/，本地用任何静态服务器打开 site/index.html 即可看
 ```
 
-启动后访问 `http://localhost:8899`（或 `process.env.PORT` 指定端口）。
+## 上线步骤（GitHub，需仓库管理员权限 / PAT）
 
-## 部署到 PaaS（Railway / Render）
+1. 创建**私有**仓库（公开也可，数据已加密），例如 `jinxiaocun-cockpit`。
+2. 仓库 **Settings → Secrets and variables → Actions** 添加两个 Secret：
+   - `KDOCS_TOKEN` = 金山 WPS access token
+   - `RELAY_PASS`  = 看板查看口令（分发给查看者）
+3. 推送本仓库到 `main` 分支（含 `.github/workflows/sync.yml`）。
+4. 仓库 **Settings → Pages → Build and deployment → Source 选「GitHub Actions」**。
+5. 到 **Actions** 页手动跑一次 `同步看板`，成功后拿到 Pages URL（如 `https://<owner>.github.io/jinxiaocun-cockpit/`）。
+6. 把 `index.html` 里的 `GH_REPO` 改成 `你的owner/jinxiaocun-cockpit`，重推一次，网页「立即同步」按钮即可触发手动刷新。
 
-1. 把本仓库推到 GitHub（见下方「推送到 GitHub」）。
-2. 在 Railway 或 Render 新建 Project，关联该 GitHub 仓库。
-3. **必须**在后台设置环境变量 `KDOCS_TOKEN=<你的真实 token>`（token 不会进仓库）。
-4. 部署：Railway 读 `railway.json`、Render 读 `render.yaml`，均执行 `node server.js`。
-5. 平台分配域名（如 `xxx.railway.app` / `xxx.onrender.com`），即 24/7 在线地址。
+## 已知限制（本期只读先行）
 
-> 免费额度提示：Railway 免费层需绑定付款方式、有用量上限；Render 免费层闲置 15 分钟会休眠（下次访问冷启动数秒）。
-> 若要求「零休眠、最稳」，建议 Railway 付费档或自有服务器。
-
-## 接口
-
-- `GET  /`                前端看板
-- `GET  /api/health`      健康检查（PaaS 健康探针）
-- `GET  /api/metrics`     聚合指标 JSON
-- `POST /api/sync-sales?apply=1`  把中转表 SKU 明细写回金山「出库流水」
-
-## 已知限制（PaaS 环境）
-
-- `/api/import`（订货台账 / 服务集团导入）依赖本机 Python + 本地 xlsx 源文件，
-  在 PaaS 上不可用。该操作为月度人工任务，请保留在本机执行
-  （`ingest_orders.py` / `ingest_jituan.py`，位于项目根目录，非本仓库内容）。
-- `wps_token.txt` 含密钥，已被 `.gitignore` 排除，**切勿提交到公开仓库**。
+- 不开放写回（导入 / 销售写回）— 保留在本机执行（`ingest_orders.py` / `ingest_jituan.py`，非本仓库）。
+- 「立即同步」按钮依赖浏览器 GitHub 登录态；若未登录可在 Actions 页手动 Run workflow。
+- 定时刷新受 GitHub 调度排队影响，可能比 15 分钟略晚，属正常。

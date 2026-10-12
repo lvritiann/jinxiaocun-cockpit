@@ -11,6 +11,12 @@ yarn-debug.log*
 yarn-error.log*
 package-lock.json
 
+# ===== 运行时生成的缓存 / 部署产物（绝不入库）=====
+# site/ 由 relay.js 生成、经 GitHub Actions 作为 Pages 产物部署，只活在部署产物里
+site/
+# 根目录 metrics.json 是本地缓存，已不使用（relay 改为写 site/）
+/metrics.json
+
 # ===== 系统文件 =====
 .DS_Store
 Thumbs.db
