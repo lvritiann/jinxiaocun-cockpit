@@ -96,10 +96,16 @@ async function setSecret(owner, repo, name, plaintext){
   if(pk.status!==200||!pk.json||!pk.json.key){ throw new Error('取公钥失败: '+pk.status+' '+pk.raw.slice(0,120)); }
   await sodium.ready;
   const binsec=sodium.from_string(plaintext);
-  const enc=sodium.crypto_box_seal(binsec, sodium.from_base64(pk.json.key));
-  const encrypted_value=sodium.to_base64(enc);
+  // ⚠️ 两处都必须显式指定 base64_variants.ORIGINAL：
+  //   1) from_base64 —— GitHub 公钥含 '+' '/'，libsodium 默认变体解析会抛 "invalid input"
+  //   2) to_base64   —— 默认输出的是 base64url（'-' '_'），而 GitHub 只收标准 base64（'+' '/' '='补位），
+  //      用默认值会以 422 "does not match /^(?:[A-Za-z0-9+/]{4})*.../" 被拒
+  const enc=sodium.crypto_box_seal(binsec, sodium.from_base64(pk.json.key, sodium.base64_variants.ORIGINAL));
+  const encrypted_value=sodium.to_base64(enc, sodium.base64_variants.ORIGINAL);
   const r=await ghApi('PUT',`/repos/${owner}/${repo}/actions/secrets/${name}`,{encrypted_value, key_id:pk.json.key_id});
-  return r.status;
+  // GitHub 建新 Secret 返 201，覆盖已有返 204，两者都算成功
+  if(r.status===201||r.status===204) return r.status;
+  throw new Error('写入返回 '+r.status+' '+r.raw.slice(0,160));
 }
 
 async function main(){
@@ -152,12 +158,15 @@ async function main(){
     try{ git(['remote','remove','origin']); }catch(_){}
     git(['remote','add','origin','https://github.com/'+owner+'/'+REPO_NAME+'.git']);
     git(['branch','-M','main']);
-    // token 只走 extraHeader，不写进 .git/config
-    git(['-c','http.extraHeader=Authorization: bearer '+GH_TOKEN,'push','-u','origin','main','--force']);
+    // ⚠️ 必须用 Basic 而不是 Bearer：GitHub 的 REST API 认 Bearer，但 git smart-HTTP 只认 Basic，
+    //    用 Bearer 会报 "remote: invalid credentials"。token 只走 extraHeader，不落 .git/config。
+    const basic=Buffer.from('x-access-token:'+GH_TOKEN,'utf8').toString('base64');
+    git(['-c','http.extraHeader=Authorization: Basic '+basic,'push','-u','origin','main','--force']);
     ok('已推送到 '+owner+'/'+REPO_NAME+' (main)');
   }catch(e){
     fail('git push 失败：'+(e.stderr?e.stderr.toString():(e.message||e)));
-    fail('常见原因：令牌缺 workflow 权限时推 .github/workflows 会被拒；或仓库非空需 --force（脚本已带）。');
+    fail('常见原因：令牌缺 workflow 权限时推 .github/workflows 会被拒；或凭据方案不对——'
+      +'GitHub git 接口只认 Authorization: Basic base64(x-access-token:令牌)，用 Bearer 必报 invalid credentials。');
     process.exit(1);
   }
 
@@ -180,6 +189,18 @@ async function main(){
   log('\n[6/7] 开启 GitHub Pages…');
   const pg=await ghApi('POST','/repos/'+owner+'/'+REPO_NAME+'/pages',{build_type:'workflow'});
   if(pg.status===201||pg.status===200||pg.status===409){ ok('Pages 已配置为「GitHub Actions」部署 ('+pg.status+')'); }
+  else if(pg.status===422&&/plan does not support/i.test(pg.raw||'')){
+    // 免费账号的 Pages 只支持**公开仓库**，私有库会 422。此时把仓库转公开再开 Pages。
+    // 安全性：仓库里不含明文凭据（wps_token.txt/看板口令.txt 均已 gitignore），
+    //   且真正的数据 metrics.json 是 AES-256-GCM 加密的，没有口令解不开。
+    warn('Pages 报 422：GitHub 免费账号不支持「私有仓库 + Pages」→ 自动把仓库转为公开');
+    const vis=await ghApi('PATCH','/repos/'+owner+'/'+REPO_NAME,{private:false});
+    if(vis.status===200){ ok('仓库已转为公开（代码可见，数据仍为密文）'); }
+    else{ fail('转公开失败 '+vis.status+' '+vis.raw.slice(0,160)+' → 请到 Settings→General→Danger Zone 手动改，或忽略 Pages 只用本地看板'); return; }
+    const pg2=await ghApi('POST','/repos/'+owner+'/'+REPO_NAME+'/pages',{build_type:'workflow'});
+    if(pg2.status===201||pg2.status===200||pg2.status===409){ ok('Pages 已配置为「GitHub Actions」部署 ('+pg2.status+')'); }
+    else warn('转公开后仍失败 '+pg2.status+' '+pg2.raw.slice(0,160)+'（可去 Settings→Pages 手动把 Source 设为 GitHub Actions）');
+  }
   else{ warn('Pages 设置返回 '+pg.status+' '+pg.raw.slice(0,160)+'（可能需在 Settings→Pages 手动把 Source 设为 GitHub Actions）'); }
 
   // 7) 触发一次同步
