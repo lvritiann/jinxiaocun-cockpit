@@ -169,3 +169,31 @@ node verify_online.js "<看板口令>"
 
 会依次校验：首页可访问 / echarts 加载 / metrics.json 可解密 / 关键指标 / 错口令被拒。
 **改完前端或算法后重跑这个脚本，比开浏览器点一遍可靠得多。**
+
+---
+
+## 15. 线上打开是**空白页**（2026-10-14 踩过，最易犯）
+
+**症状**：GitHub Pages 打开一片空白，控制台报 `/api/metrics 404`。
+
+**根因**：项目里有**两份 index.html**，搞混了：
+
+| 位置 | 版本 | 取数方式 | 用在哪 |
+|---|---|---|---|
+| `项目根目录/index.html` | **本地服务版** | `fetch('/api/metrics')` | 本地 8899 起 Node 服务 |
+| `deploy_cloud/index.html` | **静态口令版** | `fetch('./metrics.json')` + Web Crypto 解密 | **Pages 线上** |
+
+把本地服务版传上 Pages → 它去请求 `/api/metrics`，而 Pages 是纯静态托管、没有后端 → 404 → 空白页。
+
+**铁律：这两份文件永远不要互相覆盖。** 要把本地的新功能同步到线上，正确做法是**只移植改动的函数**，而不是整份覆盖。
+
+**自查（部署后必跑）**：
+```bash
+node verify_online.js "<口令>"
+# 再确认线上 HTML 是静态版：
+curl -s https://<user>.github.io/<repo>/ | grep -c "metrics.json"   # 应 >0
+curl -s https://<user>.github.io/<repo>/ | grep -c "/api/metrics"  # 应为 0
+```
+
+**另一个同源坑**：`deploy_cloud/index.html` 里 echarts 必须用**相对路径** `./vendor/echarts.min.js`。
+若写成 `/vendor/echarts.min.js`（绝对路径），在 Pages 子路径部署下会跑到 `lvritiann.github.io/vendor/` → 404 → 所有图表空白。
