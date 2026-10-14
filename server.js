@@ -117,7 +117,10 @@ async function dumpAll(sheet_id,fields){
 const refCache={s7:null,s8:null,at:0};
 async function refreshRef(){
   try{
-    const [s7,s8]=await Promise.all([dumpAll(7,['V','X','Y','6','7']),dumpAll(8,['Z','b'])]);
+    const [s7,s8]=await Promise.all([
+      dumpAll(7,['V','X','Y','6','7','W']),   // W=进价（按日金额换算需要）
+      dumpAll(8,['Z','b'])
+    ]);
     if(!s7||!s7.length) throw new Error('s7 拉取为空');
     if(!s8||!s8.length) throw new Error('s8 拉取为空');
     refCache.s7=s7; refCache.s8=s8; refCache.at=Date.now();
@@ -371,12 +374,113 @@ async function buildMetrics(){
   M.flowTotal={inQty:Math.round(s10.reduce((a,r)=>a+num(r['Bp']),0)), inRows:s10.length,
                outQty:Math.round(s11.reduce((a,r)=>a+num(r['z']),0)), outRows:s11.length};
 
+  // ---------- 日期工具（按日趋势与动态库存共用，必须先声明） ----------
+  const parseDate=v=>{ const m=String(v==null?'':v).match(/(\d{4})[\/\-年](\d{1,2})[\/\-月](\d{1,2})/);
+    if(!m) return null; const d=new Date(+m[1],+m[2]-1,+m[3]); return isNaN(d.getTime())?null:d; };
+  const fmtD=d=>{ if(!d||isNaN(d.getTime())) return ''; return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
+
+  // ---------- ★ 按日趋势（销售 / 进货 / 出库；金额 = 数量 × 字典价） ----------
+  // 口径提示：2026-08-01 之前的流水是「7 月全月累计导出」，日期粒度不可信 → partial=true，前端需淡化展示
+  const costByBar={}, sellByBar={};
+  (s7||[]).forEach(r=>{ const b=str(r['Y']); if(!b) return;
+    const c=num(r['W']); if(c) costByBar[b]=c;
+    const p=num(r['7']); if(p) sellByBar[b]=p; });
+  const dayAgg={}, dayStAgg={};
+  const bumpDay=(d,st,k,q,amt)=>{
+    if(!d) return;
+    const o=dayAgg[d]||(dayAgg[d]={date:d,inQty:0,inAmt:0,outQty:0,outAmt:0,soldQty:0,soldAmt:0,
+      lossQty:0,adjQty:0,inRows:0,outRows:0,stations:new Set(),noPrice:0});
+    o[k+'Qty']+=q; o[k+'Amt']+=amt;
+    o.stations.add(st);
+    if(amt===0) o.noPrice++;
+    const S=dayStAgg[d]||(dayStAgg[d]={});
+    const so=S[st]||(S[st]={inQty:0,outQty:0,soldQty:0,soldAmt:0,inAmt:0});
+    so[k+'Qty']+=q; if(k==='sold') so.soldAmt+=amt; if(k==='in') so.inAmt+=amt;
+  };
+  s10.forEach(r=>{
+    const d=fmtD(parseDate(r['Bn'])); if(!d||d==='null') return;
+    const st=resolveStation(r['Bo'])||'(未填)', q=num(r['Bp']), src=str(r['Bq']);
+    const o=dayAgg[d]||(dayAgg[d]={date:d,inQty:0,inAmt:0,outQty:0,outAmt:0,soldQty:0,soldAmt:0,
+      lossQty:0,adjQty:0,inRows:0,outRows:0,stations:new Set(),noPrice:0});
+    o.inRows++;
+    const c=costByBar[str(r['Bg'])]||0;
+    bumpDay(d,st,'in',q,q*c);
+    if(src.indexOf('调拨')>=0) o.adjQty+=q;
+  });
+  s11.forEach(r=>{
+    const d=fmtD(parseDate(r['s'])); if(!d||d==='null') return;
+    const st=resolveStation(r['u'])||'(未填)', q=num(r['z']), tp=str(r['y']);
+    const o=dayAgg[d]||(dayAgg[d]={date:d,inQty:0,inAmt:0,outQty:0,outAmt:0,soldQty:0,soldAmt:0,
+      lossQty:0,adjQty:0,inRows:0,outRows:0,stations:new Set(),noPrice:0});
+    o.outRows++;
+    const bar=str(r['B0']);
+    if(tp==='销售'||tp===''||tp===undefined){
+      o.outQty+=q; const p=sellByBar[bar]||0; bumpDay(d,st,'sold',q,q*p); o.outAmt+=q*p;
+    }else if(tp==='盘亏'){ o.outQty+=q; o.lossQty+=q; const p=costByBar[bar]||0; bumpDay(d,st,'out',q,q*p); }
+    else if(tp.indexOf('调拨')>=0){ o.outQty+=q; o.adjQty+=q; bumpDay(d,st,'out',q,0); }
+    else { o.outQty+=q; bumpDay(d,st,'out',q,0); }
+  });
+  const dayList=Object.values(dayAgg).sort((a,b)=>a.date<b.date?-1:1).map(o=>{
+    const {stations,...rest}=o;
+    return {...rest, inQty:Math.round(rest.inQty),inAmt:Math.round(rest.inAmt),outQty:Math.round(rest.outQty),
+      outAmt:Math.round(rest.outAmt),soldQty:Math.round(rest.soldQty),soldAmt:Math.round(rest.soldAmt),
+      lossQty:Math.round(rest.lossQty),adjQty:Math.round(rest.adjQty),stationCount:stations.size,
+      partial:rest.date<'2026-08-01'};
+  });
+  M.daily=dayList;
+  M.dailyRange={from:dayList.length?dayList[0].date:'', to:dayList.length?dayList[dayList.length-1].date:'', days:dayList.length};
+
+  // ---------- ★ 流水覆盖度体检：按月数量 + 锚后活跃天数（前端提示用，避免对着空图猜） ----------
+  // 实测结论（2026-10-14）：7月 133,836 件为整月累计导出（已含在盘点锚点内），
+  //   8 月整月 0 流水、9 月仅零星补录 5,415 件 → 按日趋势天然稀疏，是数据源现状而非程序缺陷。
+  const monthIn={}, monthOut={}, monthDaysIn={}, monthDaysOut={};
+  s10.forEach(r=>{ const d=parseDate(r['Bn']); if(!d) return; const m=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+    monthIn[m]=(monthIn[m]||0)+num(r['Bp']); (monthDaysIn[m]||(monthDaysIn[m]=new Set())).add(fmtD(d)); });
+  s11.forEach(r=>{ const d=parseDate(r['s']); if(!d) return; const m=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+    monthOut[m]=(monthOut[m]||0)+num(r['z']); (monthDaysOut[m]||(monthDaysOut[m]=new Set())).add(fmtD(d)); });
+  const monthList=[...new Set([...Object.keys(monthIn),...Object.keys(monthOut)])].sort().map(m=>({
+    month:m, inQty:Math.round(monthIn[m]||0), outQty:Math.round(monthOut[m]||0),
+    inDays:(monthDaysIn[m]?monthDaysIn[m].size:0), outDays:(monthDaysOut[m]?monthDaysOut[m].size:0),
+    preAnchor:m<'2026-08'
+  }));
+  // 锚点后有流水的「日历天」跨度 vs 实际有记录的天数 → 覆盖率
+  const postDays=new Set(dayList.filter(o=>!o.partial).map(o=>o.date));
+  const postSpan=postDays.size?(()=>{ const ds=[...postDays].sort();
+    const daysBetween=Math.round((new Date(ds[ds.length-1])-new Date(ds[0]))/864e5)+1; return daysBetween; })():0;
+  // 最新流水日期就地计算（此刻 M.dynTotal 尚未赋值，不能引用）
+  let lastFlowDate='';
+  [s10,s11].forEach(arr=>arr.forEach(r=>{ const d=parseDate(arr===s10?r['Bn']:r['s']); if(!d) return;
+    const f=fmtD(d); if(!lastFlowDate||f>lastFlowDate) lastFlowDate=f; }));
+  M.flowCoverage={ months:monthList, postAnchorDays:postDays.size, postAnchorSpan:postSpan,
+    postAnchorRate:postSpan?Math.round(postDays.size/postSpan*100):0,
+    emptyMonths:monthList.filter(m=>m.preAnchor===false&&m.inQty===0&&m.outQty===0).map(m=>m.month),
+    lastFlowDate,
+    staleDays:(()=>{ const d=parseDate(lastFlowDate); if(!d) return -1;
+      return Math.round((new Date(new Date().toDateString())-new Date(d.getFullYear(),d.getMonth(),d.getDate()))/864e5); })(),
+    note:'7月为整月累计导出（已含盘点锚点），按日粒度不可信；8月无流水、9月零星补录属数据源现状' };
+  // 近 30 天按站序列（控包体：每天每站一行，Top20 站）
+  const recentDays=dayList.filter(o=>!o.partial).slice(-30).map(o=>o.date);
+  const topStObj={};
+  const stTot={};
+  Object.entries(dayStAgg).forEach(([d,m])=>{ if(recentDays.indexOf(d)<0) return;
+    Object.entries(m).forEach(([st,v])=>{ stTot[st]=(stTot[st]||0)+v.soldAmt+v.inAmt; }); });
+  const keepSt=new Set(Object.entries(stTot).sort((a,b)=>b[1]-a[1]).slice(0,20).map(x=>x[0]));
+  M.dailyByStation={};
+  recentDays.forEach(d=>{
+    const m=dayStAgg[d]||{};
+    Object.entries(m).forEach(([st,v])=>{
+      if(!keepSt.has(st)) return;
+      (M.dailyByStation[st]||(M.dailyByStation[st]=[])).push({date:d,
+        inQty:Math.round(v.inQty),inAmt:Math.round(v.inAmt),outQty:Math.round(v.outQty),
+        soldQty:Math.round(v.soldQty),soldAmt:Math.round(v.soldAmt)});
+    });
+  });
+  M.dailyStationList=[...keepSt];
+
   // ---------- ★ 流水驱动动态库存（锚点 = s31 期末实盘 2026-07-31，增量 = 8/1 起出入库流水） ----------
   // 口径：7/31 及以前的流水是 7 月全月累计导出、已含在 DG 期末实盘内，必须排除，否则重复扣减
   const ANCHOR_TS=new Date(2026,7,1).getTime();            // 2026-08-01 00:00 之前的流水全部排除
-  const parseDate=v=>{ const m=String(v==null?'':v).match(/(\d{4})[\/\-年](\d{1,2})[\/\-月](\d{1,2})/);
-    if(!m) return null; const d=new Date(+m[1],+m[2]-1,+m[3]); return isNaN(d.getTime())?null:d; };
-  const fmtD=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  // parseDate / fmtD 已在上方「日期工具」处声明
   // 锚点：(站|条码) → 期末实盘数量 + 进货价（金额 = 数量 × DK）
   const dynAnchor={}; let anchorRows=0;
   s31.forEach(r=>{
