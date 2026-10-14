@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>金小存 · 进销存</title>
-<script src="/vendor/echarts.min.js"></script>
+<script src="./vendor/echarts.min.js"></script>
 <style>
   :root{
     --bg:#0b0f17;
@@ -224,9 +224,34 @@
     .kpi-value{font-size:26px}
     .topbar h1{font-size:17px}
   }
+  /* ---------- 口令锁定遮罩（静态口令保护看板）---------- */
+  .lock-overlay{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(6,9,15,.93);backdrop-filter:blur(6px)}
+  .lock-box{width:340px;max-width:90vw;background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:28px 24px;text-align:center;box-shadow:var(--shadow)}
+  .lock-logo{width:48px;height:48px;border-radius:12px;background:var(--accent);color:#fff;font-size:24px;font-weight:700;display:flex;align-items:center;justify-content:center;margin:0 auto 14px}
+  .lock-box h2{font-size:18px;margin-bottom:6px}
+  .lock-box .muted{color:var(--muted);font-size:13px;margin-bottom:18px}
+  #passInput{width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:var(--panel-2);color:var(--text);font-size:15px;margin-bottom:12px;outline:none}
+  #passInput:focus{border-color:var(--accent)}
+  #passBtn{width:100%;padding:12px;border:none;border-radius:10px;background:var(--accent);color:#04101f;font-size:15px;font-weight:600;cursor:pointer}
+  .lock-err{color:var(--red);font-size:13px;min-height:18px;margin-top:10px}
+  .lock-hint{color:var(--faint);font-size:11px;margin-top:14px;line-height:1.5}
+  .readonly .import-only{display:none!important}
+  .sync-btn{margin-top:8px;width:100%;padding:8px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--muted);font-size:12px;cursor:pointer}
+  .sync-btn:hover{color:var(--text);border-color:var(--accent)}
 </style>
 </head>
 <body>
+<div id="lock" class="lock-overlay">
+  <div class="lock-box">
+    <div class="lock-logo">金</div>
+    <h2>金小存 · 进销存驾驶舱</h2>
+    <p class="muted">请输入查看口令</p>
+    <input id="passInput" type="password" placeholder="查看口令" autocomplete="off" />
+    <button id="passBtn" class="btn">进入</button>
+    <div id="passErr" class="lock-err"></div>
+    <p class="lock-hint">数据已 AES 加密，错误口令无法查看。口令由管理员分发。</p>
+  </div>
+</div>
 <div class="app">
   <aside class="sidebar">
     <div class="brand">
@@ -258,7 +283,8 @@
         盘点
       </button>
     </nav>
-    <div class="sidebar-foot"><span class="dot"></span>数据自动刷新 · 30 秒</div>
+    <div class="sidebar-foot"><span class="dot"></span>数据每 15 分钟自动刷新</div>
+    <button id="syncBtn" class="sync-btn">立即同步（需令牌）</button>
   </aside>
 
   <main class="main">
@@ -307,6 +333,11 @@ var importFile = null;       // 选中的 File 对象
 var importing = false;
 var importState = null;      // GET /api/import-state 结果
 var importResultHtml = null; // 最近一次导入结果（跨重绘保留）
+
+/* 静态口令保护看板配置 */
+var READONLY = true;            // 只读看板先行：隐藏导入 UI、不调用导入接口
+var currentPass = '';           // 当前查看口令（解密用，存本机）
+var GH_REPO = 'lvritiann/jinxiaocun-cockpit'; // 建好仓库后填 owner/repo，供「同步」按钮触发 Actions
 
 var TAB_TITLES = { overview:'总览', purchase:'进货', sales:'销售', inventory:'库存', reconcile:'盘点' };
 var PANELS = ['overview','purchase','sales','inventory','reconcile'];
@@ -482,7 +513,7 @@ function renderPurchase(){
     +   '<div class="card"><div class="card-head"><h3>各站入库</h3></div>'+renderFlowInTable(finRows)+'</div>'
     +   '<div class="card"><div class="card-head"><h3>供应商商品分布 TOP</h3></div><div id="chartSup" class="chart chart-h"></div></div>'
     + '</div>'
-    + '<div class="card import-card">'
+    + '<div class="card import-card import-only">'
     +   '<div class="card-head"><h3>订货台账导入</h3>'
     +     '<div class="seg">'
     +       '<button id="importKindOrders" class="seg-btn'+(importKind==='orders'?' active':'')+'" onclick="setImportKind(\'orders\')">订货台账</button>'
@@ -636,9 +667,97 @@ function renderSales(){
     +   '<div class="card"><div class="card-head"><h3>出库流水分类</h3></div><div id="chartOutType" class="chart chart-h"></div></div>'
     +   '<div class="card"><div class="card-head"><h3>各站销售</h3></div>'+renderStSalesTable(sts)+'</div>'
     + '</div>'
+    + renderFlowCoverageNote()
+    + '<div class="card"><div class="card-head"><h3>按日进货 / 销售趋势</h3>'
+    +   '<span class="muted">7 月为整月累计导出，按日粒度不可信（已淡化标注）</span></div>'
+    +   '<div id="chartDaily" class="chart chart-h"></div></div>'
+    + '<div class="grid-2">'
+    +   '<div class="card"><div class="card-head"><h3>各站销售件数（近 30 天）</h3></div><div id="chartDailySt" class="chart chart-h"></div></div>'
+    +   '<div class="card"><div class="card-head"><h3>按日流水明细</h3></div>'+renderDailyTable()+'</div>'
+    + '</div>'
     + '<div class="card"><div class="card-head"><h3>各站出库流水</h3></div>'+renderFlowOutTable(foutRows)+'</div>';
 
   renderOutTypeChart(fout);
+  renderDailyChart();
+  renderDailyByStationChart();
+}
+// 流水覆盖度体检：把「为什么趋势图是断的」直接说清楚，避免对着空图猜
+function renderFlowCoverageNote(){
+  var fc = M.flowCoverage; if(!fc) return '';
+  var bits = [];
+  (fc.months||[]).forEach(function(m){
+    bits.push(m.month+'：进 '+num(m.inQty)+' / 出 '+num(m.outQty)+'（'+m.inDays+' 个进货日、'+m.outDays+' 个出库日）');
+  });
+  var warn = (fc.staleDays!=null && fc.staleDays>7)
+    ? '　<span class="warn">最新流水停在 '+esc(fc.lastFlowDate)+'，已 '+fc.staleDays+' 天无补录</span>' : '';
+  return '<div class="card"><div class="card-head"><h3>流水数据覆盖度</h3>'
+    + '<span class="muted">锚点后 '+fc.postAnchorDays+' / '+fc.postAnchorSpan+' 天有记录（'+fc.postAnchorRate+'%）</span></div>'
+    + '<div class="muted" style="font-size:13px;line-height:1.9">'
+    + bits.map(function(b){return '· '+esc(b);}).join('<br>')
+    + '<br>· '+esc(fc.note||'')+warn+'</div></div>';
+}
+function renderDailyTable(){
+  var rows = (M.daily||[]).filter(function(d){return !d.partial;}).slice(-30).reverse();
+  if(!rows.length) return emptyDiv('锚点后暂无流水记录');
+  var html = rows.map(function(d){
+    return '<tr><td class="mono">'+esc(d.date)+'</td>'
+      + '<td class="num">'+num(d.inQty)+'</td>'
+      + '<td class="num">'+money(d.inAmt)+'</td>'
+      + '<td class="num">'+num(d.soldQty)+'</td>'
+      + '<td class="num">'+money(d.soldAmt)+'</td>'
+      + '<td class="num'+(d.lossQty?' warn':'')+'">'+num(d.lossQty)+'</td>'
+      + '<td class="num">'+num(d.adjQty)+'</td>'
+      + '<td class="num">'+num(d.stationCount)+'</td></tr>';
+  }).join('');
+  return table(['日期','进货件数','进货金额','销售件数','销售金额','盘亏','调拨','站点数'], html);
+}
+function renderDailyChart(){
+  var node = el('chartDaily');
+  if(!node) return;
+  var all = (M.daily||[]).filter(function(d){return !d.partial;});
+  if(!all.length){ node.innerHTML='<div class="empty-chart">锚点后暂无流水记录</div>'; return; }
+  // 缺失日期补 0，否则折线会把「没记录」误画成「连续」
+  var byDate={}; all.forEach(function(d){ byDate[d.date]=d; });
+  var dates=[], cur=new Date(all[0].date+'T00:00:00'), end=new Date(all[all.length-1].date+'T00:00:00');
+  while(cur<=end){ dates.push(cur.getFullYear()+'-'+String(cur.getMonth()+1).padStart(2,'0')+'-'+String(cur.getDate()).padStart(2,'0'));
+    cur=new Date(cur.getTime()+864e5); }
+  var pick=function(k){ return dates.map(function(dt){ var o=byDate[dt]; return o?(o[k]||0):0; }); };
+  var hasAmt = all.some(function(d){ return d.inAmt||d.soldAmt; });
+  var series = hasAmt ? [
+    {name:'进货金额',type:'bar',data:pick('inAmt'),barWidth:'34%',itemStyle:{color:'#34c98e',borderRadius:[3,3,0,0]}},
+    {name:'销售金额',type:'line',data:pick('soldAmt'),smooth:true,symbolSize:5,lineStyle:{width:2},itemStyle:{color:'#4da3ff'}}
+  ] : [
+    {name:'进货件数',type:'bar',data:pick('inQty'),barWidth:'34%',itemStyle:{color:'#34c98e',borderRadius:[3,3,0,0]}},
+    {name:'销售件数',type:'line',data:pick('soldQty'),smooth:true,symbolSize:5,lineStyle:{width:2},itemStyle:{color:'#4da3ff'}}
+  ];
+  setChart('chartDaily', {
+    grid:{left:6,right:14,top:30,bottom:6,containLabel:true},
+    tooltip:{trigger:'axis',axisPointer:{type:'shadow'}},
+    legend:{top:0,right:0,textStyle:AXIS_LABEL,itemWidth:12,itemHeight:8},
+    xAxis:{type:'category',data:dates,axisLabel:Object.assign({},AXIS_LABEL,{formatter:function(v){return v.slice(5);}}),axisLine:AXIS_LINE,axisTick:{show:false}},
+    yAxis:{type:'value',axisLabel:Object.assign({},AXIS_LABEL,{formatter:fmtShort}),splitLine:SPLIT},
+    series:series
+  });
+}
+function renderDailyByStationChart(){
+  var node = el('chartDailySt');
+  if(!node) return;
+  var list = M.dailyStationList||[];
+  if(!list.length){ node.innerHTML='<div class="empty-chart">暂无分站日序列</div>'; return; }
+  var dates=(M.dailyByStation[list[0]]||[]).map(function(x){return x.date;});
+  setChart('chartDailySt', {
+    grid:{left:6,right:14,top:30,bottom:6,containLabel:true},
+    tooltip:{trigger:'axis',axisPointer:{type:'shadow'}},
+    legend:{top:0,right:0,textStyle:AXIS_LABEL,itemWidth:12,itemHeight:8},
+    xAxis:{type:'category',data:dates,
+      axisLabel:Object.assign({},AXIS_LABEL,{formatter:function(v){return v.slice(5);}}),axisLine:AXIS_LINE,axisTick:{show:false}},
+    yAxis:{type:'value',axisLabel:Object.assign({},AXIS_LABEL,{formatter:fmtShort}),splitLine:SPLIT},
+    series:list.slice(0,8).map(function(st){
+      var byDate={}; (M.dailyByStation[st]||[]).forEach(function(r){ byDate[r.date]=r; });
+      return {name:st,type:'line',smooth:true,symbolSize:4,
+        data:dates.map(function(dt){ var o=byDate[dt]; return o?(o.soldQty||0):0; })};
+    })
+  });
 }
 function renderOutTypeChart(fout){
   var agg = {销售:0,盘亏:0,调拨:0,其它:0};
@@ -974,17 +1093,59 @@ function render(){
   renderPanel(currentTab);
 }
 
-async function load(){
+/* ---------- 静态口令保护：拉取 + AES-GCM 解密 ---------- */
+function b64ToBytes(b64){ var s=atob(b64), a=new Uint8Array(s.length); for(var i=0;i<s.length;i++) a[i]=s.charCodeAt(i); return a; }
+function bytesConcat(a,b){ var o=new Uint8Array(a.length+b.length); o.set(a,0); o.set(b,a.length); return o; }
+async function deriveKey(pass){
+  var enc=new TextEncoder();
+  var hash=await crypto.subtle.digest('SHA-256', enc.encode(pass));
+  return crypto.subtle.importKey('raw', hash, 'AES-GCM', false, ['decrypt']);
+}
+async function decryptMetrics(b64, pass){
+  var raw=b64ToBytes(b64);
+  var iv=raw.slice(0,12), tag=raw.slice(12,28), data=raw.slice(28);
+  var key=await deriveKey(pass);
+  var plain=await crypto.subtle.decrypt({name:'AES-GCM', iv:iv}, key, bytesConcat(data, tag));
+  return JSON.parse(new TextDecoder().decode(plain));
+}
+function fmtTime(iso){ try{ return new Date(iso).toLocaleString('zh-CN',{hour12:false}); }catch(_){ return ''; } }
+function showLock(){ var lock=document.getElementById('lock'); if(lock) lock.style.display='flex'; }
+async function refreshData(pass){
+  pass = pass || currentPass;
+  if(!pass){ showLock(); return; }
   try{
-    var res = await fetch('/api/metrics');
-    var j = await res.json();
-    if(j && j.error){ showStatus('数据加载失败：'+j.error, true); return; }
-    M = j;
-    showStatus('', false);
+    var res = await fetch('./metrics.json', {cache:'no-store'});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    var b64 = await res.text();
+    var data = await decryptMetrics(b64, pass);
+    M = data; currentPass = pass;
+    var lock=document.getElementById('lock'); if(lock) lock.style.display='none';
+    var pe=document.getElementById('passErr'); if(pe) pe.textContent='';
     render();
+    if(!READONLY) loadImportState();
+    var s=document.getElementById('syncState'); if(s && data.generatedAt) s.textContent='数据时间 '+fmtTime(data.generatedAt);
   }catch(e){
-    showStatus('数据加载失败：'+(e&&e.message||e), true);
+    if(!pass){ showLock(); }
+    else { var pe2=document.getElementById('passErr'); if(pe2) pe2.textContent='口令错误或无网络，请重试'; }
   }
+}
+async function syncNow(){
+  var pat=null; try{ pat=localStorage.getItem('jxc_pat'); }catch(_){}
+  if(!pat){
+    var input=prompt('请输入 fine-grained PAT（仅 Actions:read/write）：');
+    if(!input) return;
+    pat=input.trim(); try{ localStorage.setItem('jxc_pat', pat); }catch(_){}
+  }
+  showStatus('正在触发同步…', false);
+  try{
+    var r=await fetch('https://api.github.com/repos/'+GH_REPO+'/actions/workflows/sync.yml/dispatches',{
+      method:'POST',
+      headers:{'Authorization':'Bearer '+pat,'Content-Type':'application/json','Accept':'application/vnd.github+json'},
+      body: JSON.stringify({ref:'main'})
+    });
+    if(r.status===204) showStatus('已触发同步，约 20–40 秒后自动刷新', false);
+    else showStatus('同步触发失败：HTTP '+r.status, true);
+  }catch(e){ showStatus('同步请求失败：'+(e&&e.message||e), true); }
 }
 
 /* 暴露给测试 / 控制台 */
@@ -998,12 +1159,21 @@ globalThis.getMetrics = function(){ return M; };
 globalThis.getImportState = function(){ return importState; };
 globalThis.getState = function(){ return {tab:currentTab, station:currentStation, importKind:importKind}; };
 
-/* 启动 */
-render();
-load();
-loadImportState();
-setInterval(load, 30000);
-setInterval(loadImportState, 60000);
+/* 启动：口令锁定 → 解密 → 渲染 */
+document.body.classList.toggle('readonly', READONLY);
+var passInput=document.getElementById('passInput');
+var passBtn=document.getElementById('passBtn');
+if(passBtn) passBtn.onclick=function(){ refreshData(passInput.value); };
+if(passInput) passInput.addEventListener('keydown', function(e){ if(e.key==='Enter') refreshData(passInput.value); });
+var syncBtn=document.getElementById('syncBtn');
+if(syncBtn) syncBtn.onclick=syncNow;
+render(); // 先画空壳（M 为空时 render 早退）
+// 尝试自动解锁：URL 片段 #k= 或 本机记忆
+var frag=new URLSearchParams(location.hash.slice(1)).get('k');
+if(frag){ try{ localStorage.setItem('jxc_pass', frag); }catch(_){ } history.replaceState(null,'',location.pathname); refreshData(frag); }
+else { try{ var saved=localStorage.getItem('jxc_pass'); if(saved) refreshData(saved); else showLock(); }catch(_){ showLock(); } }
+if(!READONLY){ loadImportState(); setInterval(loadImportState, 60000); }
+setInterval(function(){ refreshData(currentPass); }, 900000); // 15 分钟自动刷新
 
 })();
 </script>
