@@ -197,3 +197,34 @@ curl -s https://<user>.github.io/<repo>/ | grep -c "/api/metrics"  # 应为 0
 
 **另一个同源坑**：`deploy_cloud/index.html` 里 echarts 必须用**相对路径** `./vendor/echarts.min.js`。
 若写成 `/vendor/echarts.min.js`（绝对路径），在 Pages 子路径部署下会跑到 `lvritiann.github.io/vendor/` → 404 → 所有图表空白。
+
+---
+
+## 16. 页面能打开，但「全部没有数据」/ 一片空白（比15 节更隐蔽）
+
+**症状**：页面出得来、解密也成功，但五个页签都是空的（或整个首屏空白）。
+
+**根因（2026-10-14 实际踩到）**：**一个图表的异常冒泡到 `render()`，把整个首屏渲染打断。**
+具体是 `new echarts.graphic.LinearGradient(...)` —— echarts 脚本尚未就绪 / CDN 没加载时，
+`echarts.graphic` 为 undefined → TypeError → 一路冒泡 → `render()` 中断 →
+后续所有页签都没渲染，同时 `refreshData` 里 `M = data` 之后的中断还会让页面卡在锁屏。
+**用户观感：什么数据都没有。**
+
+**已落地的三层防护（别删）**：
+1. `setChart()` 整段 `try/catch` —— 单个图表失败只在容器内显示提示，**不再向上冒泡**
+2. `renderPanel()` 每个页签独立 `try/catch` —— 一页出错不影响其余页
+3. `grad(c1,c2)` 助手 —— `echarts.graphic` 缺失时退回纯色，不抛异常
+
+**同类脆弱点（都已包 try，别裸调）**：
+- `new URLSearchParams(...)`：旧浏览器 / 部分安卓 WebView 里不存在，裸调会中断自动解锁
+- `refreshData` 的失败提示要**区分「口令错」与「取数失败」**，笼统写"口令错误或无网络"会让人反复输错口令
+
+**离线自查（不用开浏览器，推荐）**：
+```bash
+node verify_online.js "<口令>"    # 线上产物 + 解密 + 错口令拒绝
+node verify_tabs.js  "<口令>"    # 逐页签渲染体检；默认故意不给 echarts，验证最坏情况
+node debug_render.js "<口令>"    # 输出真实异常栈 + 17 项数据字段体检
+```
+`verify_tabs.js` 在 echarts 完全缺失下仍应显示「五个页签全部正常渲染」——这就是防护生效的证据。
+
+> 修前端后**务必跑 `verify_tabs.js`**：它能抓到浏览器里看不出来的渲染中断（本例就是靠它抓到的）。
