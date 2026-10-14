@@ -383,13 +383,27 @@ function filterStation(arr){
 }
 
 /* ---------- ECharts 封装 ---------- */
+// 渐变助手：echarts 未就绪或 graphic 缺失时退回纯色，避免整页渲染崩掉
+function grad(c1, c2){
+  try{
+    if(typeof echarts!=='undefined' && echarts.graphic && echarts.graphic.LinearGradient)
+      return new echarts.graphic.LinearGradient(0,0,1,0,[{offset:0,color:c1},{offset:1,color:c2}]);
+  }catch(_){}
+  return c1;
+}
 function setChart(id, opt){
-  if(typeof echarts==='undefined') return;
-  var node = el(id);
-  if(!node) return;
-  if(charts[id]){ if(charts[id].dispose) charts[id].dispose(); charts[id]=null; }
-  charts[id] = echarts.init(node);
-  charts[id].setOption(opt, {notMerge:true});
+  // ⚠️ 单个图表失败绝不能冒泡到 render()，否则整页空白——这里吞掉异常并在容器里留提示
+  try{
+    if(typeof echarts==='undefined'){ var n0=el(id); if(n0) n0.innerHTML='<div class="empty-chart">图表库未加载</div>'; return; }
+    var node = el(id);
+    if(!node) return;
+    if(charts[id]){ if(charts[id].dispose) charts[id].dispose(); charts[id]=null; }
+    charts[id] = echarts.init(node);
+    charts[id].setOption(opt, {notMerge:true});
+  }catch(err){
+    console.error('[金小存] 图表 '+id+' 渲染失败', err);
+    try{ var n=el(id); if(n) n.innerHTML='<div class="empty-chart">图表渲染失败</div>'; }catch(_){}
+  }
 }
 var AXIS_LABEL = {color:'#8a94a8'};
 var CAT_LABEL = {color:'#c6cede',fontSize:12};
@@ -441,7 +455,7 @@ function renderStockTopChart(top){
     xAxis:{type:'value',axisLabel:Object.assign({},AXIS_LABEL,{formatter:fmtShort}),splitLine:SPLIT},
     yAxis:{type:'category',data:y,axisLabel:CAT_LABEL,axisLine:AXIS_LINE,axisTick:{show:false}},
     series:[{type:'bar',data:d,barWidth:'58%',
-      itemStyle:{borderRadius:[0,6,6,0],color:new echarts.graphic.LinearGradient(0,0,1,0,[{offset:0,color:'#2563eb'},{offset:1,color:'#38bdf8'}])},
+      itemStyle:{borderRadius:[0,6,6,0],color:grad('#2563eb','#38bdf8')},
       label:{show:true,position:'right',color:'#c6cede',formatter:function(p){return '¥'+fmtShort(p.value);}}
     }]
   });
@@ -1037,11 +1051,20 @@ function showPanel(tab){
 function renderPanel(tab){
   showPanel(tab);
   if(!M) return;
-  if(tab==='overview') renderOverview();
-  else if(tab==='purchase') renderPurchase();
-  else if(tab==='sales') renderSales();
-  else if(tab==='inventory') renderInventory();
-  else if(tab==='reconcile') renderReconcile();
+  // ⚠️ 每个页签单独兜底：某一页渲染异常不能拖垮其余页签（否则表现为"全部没数据"）
+  try{
+    if(tab==='overview') renderOverview();
+    else if(tab==='purchase') renderPurchase();
+    else if(tab==='sales') renderSales();
+    else if(tab==='inventory') renderInventory();
+    else if(tab==='reconcile') renderReconcile();
+  }catch(err){
+    console.error('[金小存] 页签 '+tab+' 渲染失败', err);
+    try{
+      var p=el('panel-'+tab);
+      if(p) p.innerHTML='<div class="card"><div class="empty">该页渲染出错：'+esc(err&&err.message||err)+'</div></div>';
+    }catch(_){}
+  }
 }
 function updateHeader(){
   var t = el('pageTitle'); if(t) t.textContent = TAB_TITLES[currentTab]||'总览';
@@ -1126,7 +1149,14 @@ async function refreshData(pass){
     var s=document.getElementById('syncState'); if(s && data.generatedAt) s.textContent='数据时间 '+fmtTime(data.generatedAt);
   }catch(e){
     if(!pass){ showLock(); }
-    else { var pe2=document.getElementById('passErr'); if(pe2) pe2.textContent='口令错误或无网络，请重试'; }
+    else {
+      // 区分「口令错」与「取数失败」：笼统提示会让用户反复输错口令
+      var msg='加载失败：'+(e&&e.message||e);
+      if(/decrypt|operation|cipher/i.test(msg)) msg='口令不正确，请重新输入';
+      var pe2=document.getElementById('passErr');
+      if(pe2) pe2.textContent=msg;
+      console.error('[金小存] 加载失败', e);
+    }
   }
 }
 async function syncNow(){
@@ -1167,10 +1197,16 @@ if(passBtn) passBtn.onclick=function(){ refreshData(passInput.value); };
 if(passInput) passInput.addEventListener('keydown', function(e){ if(e.key==='Enter') refreshData(passInput.value); });
 var syncBtn=document.getElementById('syncBtn');
 if(syncBtn) syncBtn.onclick=syncNow;
-render(); // 先画空壳（M 为空时 render 早退）
+render(); // 先画空壳（M 为空时 render早退）
 // 尝试自动解锁：URL 片段 #k= 或 本机记忆
-var frag=new URLSearchParams(location.hash.slice(1)).get('k');
-if(frag){ try{ localStorage.setItem('jxc_pass', frag); }catch(_){ } history.replaceState(null,'',location.pathname); refreshData(frag); }
+// ⚠️ 这段必须整体包try：URLSearchParams 在部分旧浏览器/WebView 内不存在，
+//    一旦抛错会中断后面的自动解锁 → 页面永远停在锁屏，看起来像"没有数据"。
+var frag=null;
+try{ frag=new URLSearchParams(location.hash.slice(1)).get('k'); }catch(_){
+  // 兜底：手写解析 #k=xxx
+  try{ var m=/(?:^|[&?])k=([^&]+)/.exec(location.hash.slice(1)); if(m) frag=decodeURIComponent(m[1]); }catch(_){}
+}
+if(frag){ try{ localStorage.setItem('jxc_pass', frag); }catch(_){ } try{ history.replaceState(null,'',location.pathname); }catch(_){ } refreshData(frag); }
 else { try{ var saved=localStorage.getItem('jxc_pass'); if(saved) refreshData(saved); else showLock(); }catch(_){ showLock(); } }
 if(!READONLY){ loadImportState(); setInterval(loadImportState, 60000); }
 setInterval(function(){ refreshData(currentPass); }, 900000); // 15 分钟自动刷新
