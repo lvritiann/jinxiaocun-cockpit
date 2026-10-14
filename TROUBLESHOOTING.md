@@ -140,3 +140,32 @@ NODE_PATH="C:/Users/DELL/.workbuddy/binaries/node/workspace/node_modules" \
 - `site/metrics.json` 是 **base64 字符串**（`iv[12]+tag[16]+密文` 再整体 base64），验签要 `Buffer.from(file,'utf8'),'base64'`，直接按二进制读会解不开、报 `Unsupported state or unable to authenticate data`——**这通常只是你读法错了，不是口令错**。
 - `parseDate` / `fmtD` 是 `const`，声明顺序有 TDZ 约束（我在加按日趋势时踩过）。新增聚合块若要用，放到「日期工具」之后或提到它前面，别在下方重复声明。
 - 改完 `server.js` 一定 `node --check server.js`；改完 `index.html` 要把内联 `<script>`抠出来 `node --check` 一遍。
+
+---
+
+## 13. 上线实战踩过的三个坑（2026-10-14 已修，勿重犯）
+
+**① `git push` 报 `remote: invalid credentials`，但令牌明明有效**
+GitHub 的两套接口认不同的凭据格式：REST API 认 `Authorization: Bearer <token>`，而 **git smart-HTTP 只认 `Authorization: Basic base64("x-access-token:"+token)`**。用 Bearer 推代码必失败，但同一个令牌调API 完全正常 —— 极具迷惑性。
+已修：`deploy_gh.js` 用 Basic。
+
+**② 设 Actions Secret 报 422 `does not match /^(?:[A-Za-z0-9+/]{4})*.../`**
+`libsodium-wrappers` 的 `from_base64()` / `to_base64()` **默认走 base64url 变体**（输出 `-` `_`、不带 `=` 补位），而 GitHub 只收**标准 base64**（`+` `/` `=`）。另外 GitHub 返回的公钥本身含 `+` `/`，用默认变体解析会抛 `invalid input`。
+已修：**两处都要显式传 `sodium.base64_variants.ORIGINAL`**。
+另注：Secret 写入成功返回 **201（新建）或 204（覆盖）**，只认 204 会把成功误报成失败。
+
+**③ 开 Pages 报 422 `Your current plan does not support GitHub Pages`**
+**GitHub 免费账号的 Pages 只支持公开仓库**，私有仓库必报这句（与账号是否支持 Pages 无关 —— 同账号的`dinghuo-taizhang` 公开仓就正常跑）。
+已修：脚本检测该报错时自动把仓库转公开。
+安全性说明：仓库内**不含任何明文凭据**（`wps_token.txt`、`看板口令.txt`、`metrics.json`、`site/` 均已 gitignore），对外可见的 `metrics.json` 是 AES-256-GCM 密文，无口令解不开。
+
+## 14. 线上验收：`verify_online.js`
+
+上线后跑一下，直接从公网拉产物 + 口令解密 + 核对关键指标：
+
+```bash
+node verify_online.js "<看板口令>"
+```
+
+会依次校验：首页可访问 / echarts 加载 / metrics.json 可解密 / 关键指标 / 错口令被拒。
+**改完前端或算法后重跑这个脚本，比开浏览器点一遍可靠得多。**
