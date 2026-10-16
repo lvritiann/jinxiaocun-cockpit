@@ -21,7 +21,7 @@ function get(url) {
   const idx = await get(BASE);
   console.log('看板首页:', idx.status, '| 大小', idx.body.length, '字节');
   console.log('  含金小存标识:', /金小存|进销存/.test(idx.body) ? '✅ 是' : '❌ 否');
-  console.log('  口令输入框已移除:', /passInput/.test(idx.body) ? '❌ 仍存在（旧版未部署）' : '✅ 已移除');
+  console.log('  口令输入框已移除:', /id="passInput"|请输入查看口令|decryptMetrics/.test(idx.body) ? '❌ 仍存在（旧版未部署）' : '✅ 已移除');
   console.log('  取数路径为 ./metrics.json:', /metrics\.json/.test(idx.body) ? '✅ 是' : '❌ 否');
   console.log('  （应无 /api/metrics）:', /\/api\/metrics/.test(idx.body) ? '❌ 出现本地接口！' : '✅ 无');
 
