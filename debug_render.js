@@ -21,11 +21,17 @@ function decryptMetrics(b64, pass) {
 const enc = fs.readFileSync(path.join(DIR, 'site', 'metrics.json'), 'utf8');
 let M;
 try {
-  M = decryptMetrics(enc, PASS);
-  console.log('✅ 解密成功，顶层键', Object.keys(M).length, '个');
-} catch (e) {
-  console.log('❌ 解密失败:', e.message);
-  process.exit(1);
+  // 2026-10-16 起为明文；若仍是密文则回退到口令解密
+  M = JSON.parse(enc);
+  console.log('✅ 明文读取成功，顶层键', Object.keys(M).length, '个');
+} catch (_) {
+  try {
+    M = decryptMetrics(enc, PASS);
+    console.log('✅ 解密成功（仍为密文产物），顶层键', Object.keys(M).length, '个');
+  } catch (e) {
+    console.log('❌ 读取/解密失败:', e.message);
+    process.exit(1);
+  }
 }
 
 // ---- 2. 装一个最小 DOM 桩，把页面里的 JS 抠出来跑 ----

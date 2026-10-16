@@ -241,15 +241,15 @@
 </style>
 </head>
 <body>
-<div id="lock" class="lock-overlay">
+<!-- 口令已于 2026-10-16 取消。此浮层默认隐藏，仅在数据加载失败时用于提示。 -->
+<div id="lock" class="lock-overlay" style="display:none">
   <div class="lock-box">
     <div class="lock-logo">金</div>
-    <h2>金小存 · 进销存驾驶舱</h2>
-    <p class="muted">请输入查看口令</p>
-    <input id="passInput" type="password" placeholder="查看口令" autocomplete="off" />
-    <button id="passBtn" class="btn">进入</button>
+    <h2>数据加载失败</h2>
+    <p class="muted">看板数据暂时取不到，请稍后重试</p>
+    <button id="passBtn" class="btn" onclick="location.reload()">重新加载</button>
     <div id="passErr" class="lock-err"></div>
-    <p class="lock-hint">数据已 AES 加密，错误口令无法查看。口令由管理员分发。</p>
+    <p class="lock-hint">多为 GitHub Actions 正在同步或网络异常，等 10 分钟后刷新即可。</p>
   </div>
 </div>
 <div class="app">
@@ -336,7 +336,7 @@ var importResultHtml = null; // 最近一次导入结果（跨重绘保留）
 
 /* 静态口令保护看板配置 */
 var READONLY = true;            // 只读看板先行：隐藏导入 UI、不调用导入接口
-var currentPass = '';           // 当前查看口令（解密用，存本机）
+var currentPass = '';           // 兼容占位（口令已于 2026-10-16 取消，不再使用）
 var GH_REPO = 'lvritiann/jinxiaocun-cockpit'; // 建好仓库后填 owner/repo，供「同步」按钮触发 Actions
 
 var TAB_TITLES = { overview:'总览', purchase:'进货', sales:'销售', inventory:'库存', reconcile:'盘点' };
@@ -1116,47 +1116,31 @@ function render(){
   renderPanel(currentTab);
 }
 
-/* ---------- 静态口令保护：拉取 + AES-GCM 解密 ---------- */
-function b64ToBytes(b64){ var s=atob(b64), a=new Uint8Array(s.length); for(var i=0;i<s.length;i++) a[i]=s.charCodeAt(i); return a; }
-function bytesConcat(a,b){ var o=new Uint8Array(a.length+b.length); o.set(a,0); o.set(b,a.length); return o; }
-async function deriveKey(pass){
-  var enc=new TextEncoder();
-  var hash=await crypto.subtle.digest('SHA-256', enc.encode(pass));
-  return crypto.subtle.importKey('raw', hash, 'AES-GCM', false, ['decrypt']);
-}
-async function decryptMetrics(b64, pass){
-  var raw=b64ToBytes(b64);
-  var iv=raw.slice(0,12), tag=raw.slice(12,28), data=raw.slice(28);
-  var key=await deriveKey(pass);
-  var plain=await crypto.subtle.decrypt({name:'AES-GCM', iv:iv}, key, bytesConcat(data, tag));
-  return JSON.parse(new TextDecoder().decode(plain));
-}
+/* ---------- 无口令模式（2026-10-16 起）：直接拉取明文 metrics.json ---------- */
 function fmtTime(iso){ try{ return new Date(iso).toLocaleString('zh-CN',{hour12:false}); }catch(_){ return ''; } }
-function showLock(){ var lock=document.getElementById('lock'); if(lock) lock.style.display='flex'; }
-async function refreshData(pass){
-  pass = pass || currentPass;
-  if(!pass){ showLock(); return; }
+function showError(msg){
+  var lock=document.getElementById('lock'); if(lock) lock.style.display='flex';
+  var pe=document.getElementById('passErr'); if(pe) pe.textContent=msg||'';
+}
+async function refreshData(){
   try{
-    var res = await fetch('./metrics.json', {cache:'no-store'});
+    var res = await fetch('./metrics.json?_=' + Date.now(), {cache:'no-store'});
     if(!res.ok) throw new Error('HTTP '+res.status);
-    var b64 = await res.text();
-    var data = await decryptMetrics(b64, pass);
-    M = data; currentPass = pass;
+    var txt = await res.text();
+    var data;
+    try{ data = JSON.parse(txt); }
+    catch(_){
+      // 兼容期：若线上仍是加密产物，给一句明确提示（而不是含糊的"加载失败"）
+      throw new Error('metrics.json 不是明文（可能仍是加密版本），请触发一次同步重新生成');
+    }
+    M = data;
     var lock=document.getElementById('lock'); if(lock) lock.style.display='none';
-    var pe=document.getElementById('passErr'); if(pe) pe.textContent='';
     render();
     if(!READONLY) loadImportState();
     var s=document.getElementById('syncState'); if(s && data.generatedAt) s.textContent='数据时间 '+fmtTime(data.generatedAt);
   }catch(e){
-    if(!pass){ showLock(); }
-    else {
-      // 区分「口令错」与「取数失败」：笼统提示会让用户反复输错口令
-      var msg='加载失败：'+(e&&e.message||e);
-      if(/decrypt|operation|cipher/i.test(msg)) msg='口令不正确，请重新输入';
-      var pe2=document.getElementById('passErr');
-      if(pe2) pe2.textContent=msg;
-      console.error('[金小存] 加载失败', e);
-    }
+    console.error('[金小存] 加载失败', e);
+    showError('加载失败：'+(e&&e.message||e));
   }
 }
 async function syncNow(){
@@ -1189,27 +1173,14 @@ globalThis.getMetrics = function(){ return M; };
 globalThis.getImportState = function(){ return importState; };
 globalThis.getState = function(){ return {tab:currentTab, station:currentStation, importKind:importKind}; };
 
-/* 启动：口令锁定 → 解密 → 渲染 */
+/* 启动：直接加载明文数据（口令已于 2026-10-16 取消） */
 document.body.classList.toggle('readonly', READONLY);
-var passInput=document.getElementById('passInput');
-var passBtn=document.getElementById('passBtn');
-if(passBtn) passBtn.onclick=function(){ refreshData(passInput.value); };
-if(passInput) passInput.addEventListener('keydown', function(e){ if(e.key==='Enter') refreshData(passInput.value); });
 var syncBtn=document.getElementById('syncBtn');
 if(syncBtn) syncBtn.onclick=syncNow;
 render(); // 先画空壳（M 为空时 render早退）
-// 尝试自动解锁：URL 片段 #k= 或 本机记忆
-// ⚠️ 这段必须整体包try：URLSearchParams 在部分旧浏览器/WebView 内不存在，
-//    一旦抛错会中断后面的自动解锁 → 页面永远停在锁屏，看起来像"没有数据"。
-var frag=null;
-try{ frag=new URLSearchParams(location.hash.slice(1)).get('k'); }catch(_){
-  // 兜底：手写解析 #k=xxx
-  try{ var m=/(?:^|[&?])k=([^&]+)/.exec(location.hash.slice(1)); if(m) frag=decodeURIComponent(m[1]); }catch(_){}
-}
-if(frag){ try{ localStorage.setItem('jxc_pass', frag); }catch(_){ } try{ history.replaceState(null,'',location.pathname); }catch(_){ } refreshData(frag); }
-else { try{ var saved=localStorage.getItem('jxc_pass'); if(saved) refreshData(saved); else showLock(); }catch(_){ showLock(); } }
+refreshData();                       // ← 打开即取数，无需任何口令
 if(!READONLY){ loadImportState(); setInterval(loadImportState, 60000); }
-setInterval(function(){ refreshData(currentPass); }, 900000); // 15 分钟自动刷新
+setInterval(refreshData, 900000); // 15 分钟自动刷新
 
 })();
 </script>

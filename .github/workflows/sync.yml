@@ -33,10 +33,12 @@ jobs:
         with:
           node-version: '20'
 
-      - name: 运行中继（拉金山多维表 → AES 加密 → 产出 site/）
+      - name: 运行中继（拉金山多维表 → 产出 site/）
         env:
           KDOCS_TOKEN: ${{ secrets.KDOCS_TOKEN }}   # 金山 WPS access token（仓库 Secrets，不入库）
-          RELAY_PASS:   ${{ secrets.RELAY_PASS }}     # 看板查看口令（仓库 Secrets，不入库）
+          RELAY_PLAINTEXT: '1'                       # 明文发布（看板口令已于 2026-10-16 取消）
+          # 如需恢复口令保护：把上一行改成 '0'，并配置 RELAY_PASS secret
+          RELAY_PASS:   ${{ secrets.RELAY_PASS }}     # 仅加密模式使用
         run: node relay.js
 
       - name: 校验产出
@@ -44,12 +46,13 @@ jobs:
           if [ ! -s site/metrics.json ]; then
             echo "❌ site/metrics.json 为空，中继可能失败"; exit 1
           fi
-          echo "✅ metrics.json 大小: $(wc -c < site/metrics.json) 字节（已 AES 加密）"
+          head -c 1 site/metrics.json | grep -q '{' || { echo "❌ metrics.json 不是明文 JSON"; exit 1; }
+          echo "✅ metrics.json 大小: $(wc -c < site/metrics.json) 字节（明文，无口令）"
 
       - name: 上传 Pages 产物
         uses: actions/upload-pages-artifact@v3
         with:
-          path: site                                   # 含 index.html / metrics.json(加密) / vendor/echarts.min.js
+          path: site                                   # 含 index.html / metrics.json(明文) / vendor/echarts.min.js
 
       - name: 部署到 GitHub Pages
         id: deployment

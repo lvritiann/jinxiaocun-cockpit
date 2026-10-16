@@ -11,6 +11,10 @@ const html = fs.readFileSync(__dirname + '/index.html', 'utf8');
 const code = [...html.matchAll(/<script(?![^>]*src=)[^>]*>([\s\S]*?)<\/script>/g)]
   .map(m => m[1]).sort((a, b) => b.length - a.length)[0];
 const enc = fs.readFileSync(__dirname + '/site/metrics.json', 'utf8');
+if (enc.trim().charAt(0) !== '{') {
+  console.log('❌ site/metrics.json 不是明文 JSON。口令已取消，请先跑 `node relay.js` 重新产出一份明文。');
+  process.exit(1);
+}
 
 const PASS = process.argv[2] || '';
 

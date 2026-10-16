@@ -4,14 +4,16 @@
  *
  * 职责：
  *   1. 复用 server.js 的聚合引擎（refreshRef/refreshFlow/buildMetrics），从金山在线(Kdocs)拉数据并算出指标
- *   2. 用 RELAY_PASS 派生密钥对指标做 AES-256-GCM 加密（口令不对解不开 = 数据不公开）
- *   3. 把加密后的 metrics.json + 静态看板(index.html) + echarts 产出到 site/ 目录
+ *   2. 产出指标文件 metrics.json（**默认明文**；2026-10-16 起看板已取消口令）
+ *      —— 如需恢复口令保护，设 RELAY_PLAINTEXT=0 + RELAY_PASS，则走 AES-256-GCM 加密
+ *   3. 把 metrics.json + 静态看板(index.html) + echarts 产出到 site/ 目录
  *
  * 运行环境：本地可跑（node relay.js），GitHub Actions 亦可跑。
  * 环境变量：
- *   KDOCS_TOKEN  金山 WPS access token（缺省时 server.js 会读同目录 wps_token.txt）
- *   RELAY_PASS   看板口令（必填；用于加密，查看者需输入同一口令解密）
- *   SITE_DIR     产出目录，默认 ./site
+ *   KDOCS_TOKEN      金山 WPS access token（缺省时 server.js 会读同目录 wps_token.txt）
+ *   RELAY_PLAINTEXT  '1'（默认）=明文发布；'0'=加密
+ *   RELAY_PASS       仅加密模式必填（看板口令）
+ *   SITE_DIR         产出目录，默认 ./site
  */
 'use strict';
 const fs = require('fs');
@@ -21,12 +23,15 @@ const crypto = require('crypto');
 const ROOT = __dirname;
 const SITE_DIR = process.env.SITE_DIR || path.join(ROOT, 'site');
 
-// ---- 口令（必填）----
+// ---- 口令 / 明文模式（2026-10-16 起已取消口令，默认明文发布）----
+// 想恢复口令保护：把环境变量 RELAY_PLAINTEXT 设为 0，并配置 RELAY_PASS。
 const RELAY_PASS = process.env.RELAY_PASS || '';
-if (!RELAY_PASS) {
-  console.error('❌ 缺少 RELAY_PASS 环境变量（看板口令），无法加密。');
+const PLAINTEXT = String(process.env.RELAY_PLAINTEXT || '1') !== '0';
+if (!PLAINTEXT && !RELAY_PASS) {
+  console.error('❌ 加密模式缺少 RELAY_PASS 环境变量（看板口令）。若想取消口令，设 RELAY_PLAINTEXT=1。');
   process.exit(1);
 }
+console.log('🔓 发布模式：' + (PLAINTEXT ? '明文（无口令，人人可看）' : 'AES-256-GCM 加密（需口令）'));
 
 // ---- 复用已验证的聚合引擎（require 时 server.js 不会启动 HTTP）----
 const engine = require('./server.js');
@@ -62,10 +67,17 @@ async function main() {
   const M = await buildMetrics();
   M.generatedAt = new Date().toISOString();
 
-  console.log('④ AES 加密指标…');
-  const cipher = encryptJSON(M, RELAY_PASS);
-  fs.writeFileSync(path.join(SITE_DIR, 'metrics.json'), cipher, 'utf8');
-  console.log('   ✅ site/metrics.json (' + (cipher.length / 1024).toFixed(1) + ' KB, 已加密)');
+  if (PLAINTEXT) {
+    console.log('④ 产出明文指标（口令已取消）…');
+    const plain = JSON.stringify(M);
+    fs.writeFileSync(path.join(SITE_DIR, 'metrics.json'), plain, 'utf8');
+    console.log('   ✅ site/metrics.json (' + (plain.length / 1024).toFixed(1) + ' KB, 明文)');
+  } else {
+    console.log('④ AES 加密指标…');
+    const cipher = encryptJSON(M, RELAY_PASS);
+    fs.writeFileSync(path.join(SITE_DIR, 'metrics.json'), cipher, 'utf8');
+    console.log('   ✅ site/metrics.json (' + (cipher.length / 1024).toFixed(1) + ' KB, 已加密)');
+  }
 
   console.log('⑤ 产出静态看板资源…');
   copyFileIfExists('index.html', 'index.html');

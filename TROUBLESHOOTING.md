@@ -1,7 +1,13 @@
 # 金小存看板 · 排错手册（TROUBLESHOOTING）
 
+> ## ⚠️ 2026-10-16 变更：**看板口令已取消**
+> 看板**打开即看**，不再弹口令框；`metrics.json` 改为**明文**发布。
+> 下文第 2 节（输口令进不去）**已失效**，第 8 节改口令相关操作仅在你**重新开启口令**时适用。
+> 恢复口令：workflow 里把 `RELAY_PLAINTEXT` 改 `'0'` + 配 `RELAY_PASS` Secret + 重跑 sync。
+> 现在若页面打不开，直接跳到 **第 3 节（页面打不开/空白）** 排查即可。
+
 > 目标：不找 AI，3 分钟内自助定位。按「现象」对号入座。
-> 架构速记：金山多维表(真源) → GitHub Actions 每15分钟跑 `relay.js` → AES加密成 `metrics.json` → GitHub Pages 托管 → 浏览器输口令解密显示。
+> 架构速记：金山多维表(真源) → GitHub Actions 每15分钟跑 `relay.js` → 加密/明文化成 `metrics.json` → GitHub Pages 托管 → 浏览器展示。
 
 ---
 
