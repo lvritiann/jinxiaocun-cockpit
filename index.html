@@ -146,7 +146,7 @@
   .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px}
   .grid-2>.card{margin-bottom:0}
   .chart{width:100%;height:300px}
-  .chart-h{height:320px}
+  .chart-h{height:340px}
   .empty-chart{height:100%;display:flex;align-items:center;justify-content:center;color:var(--faint);font-size:13px}
 
   /* ---------- 表格 ---------- */
@@ -416,6 +416,20 @@ var AXIS_LABEL = {color:'rgba(8,31,92,.62)',fontSize:12};
 var CAT_LABEL = {color:'#0A1F4D',fontSize:12,fontWeight:600};
 var SPLIT = {lineStyle:{color:'rgba(8,31,92,.10)',type:'dashed'}};
 var AXIS_LINE = {lineStyle:{color:'rgba(8,31,92,.22)'}};
+/* 线性渐变：echarts.graphic 缺失时自动退回最后一色，绝不抛错（图表容错第一原则） */
+function pgrad(dir, colors){
+  try{
+    if(typeof echarts==='undefined' || !echarts.graphic || !echarts.graphic.LinearGradient){
+      return colors[colors.length-1];
+    }
+    var stops = colors.map(function(c,i){ return {offset: colors.length===1?0:i/(colors.length-1), color:c}; });
+    var xy = dir==='v' ? [0,1,0,0] : (dir==='h' ? [0,0,1,0] : [0,0,0,1]);
+    return new echarts.graphic.LinearGradient(xy[0],xy[1],xy[2],xy[3],stops);
+  }catch(e){ return colors[colors.length-1]; }
+}
+/* 通栏柱的标准渐变（底深顶亮，柱头像受光） */
+var GBAR_H = function(){ return pgrad('h',['#1E2F78','#6F92D8']); };
+var GBAR_V = function(){ return pgrad('v',['#1E2F78','#6F92D8']); };
 /* 数值标签统一样式 */
 function valLabel(opt){
   opt = opt || {};
@@ -464,14 +478,17 @@ function renderStockTopChart(top){
   var y = top.map(function(s){return s.station;}).reverse();
   var d = top.map(function(s){return s.amt;}).reverse();
   setChart('chartStockTop', {
-    grid:{left:6,right:52,top:6,bottom:6,containLabel:true},
+    grid:{left:6,right:92,top:6,bottom:6,containLabel:true},
     tooltip:{trigger:'axis',axisPointer:{type:'shadow'},valueFormatter:function(v){return '¥'+nf0.format(v);}},
-    xAxis:{type:'value',axisLabel:Object.assign({},AXIS_LABEL,{formatter:fmtShort}),splitLine:SPLIT},
+    xAxis:{type:'value',max:function(v){return v.max*1.30;},axisLabel:Object.assign({},AXIS_LABEL,{formatter:fmtShort}),splitLine:SPLIT},
     yAxis:{type:'category',data:y,axisLabel:CAT_LABEL,axisLine:AXIS_LINE,axisTick:{show:false}},
     series:[{type:'bar',data:d,barWidth:'62%',
-      itemStyle:{borderRadius:[0,16,16,0],color:PB.main},
+      showBackground:true,
+      backgroundStyle:{color:'rgba(51,78,172,.055)',borderRadius:[0,16,16,0]},
+      itemStyle:{borderRadius:[0,16,16,0],
+        color:function(p){ return p.dataIndex===d.length-1 ? PB.deep : PB.main; }},
       emphasis:{itemStyle:{color:PB.deep}},
-      label:{show:true,position:'right',color:'#0A1F4D',fontSize:11,fontWeight:600,formatter:function(p){return '¥'+fmtShort(p.value);}}
+      label:{show:true,position:'right',color:'#0A1F4D',fontSize:11,fontWeight:600,formatter:function(p){return ' ¥'+fmtShort(p.value);}}
     }]
   });
 }
@@ -491,11 +508,14 @@ function renderFlowChart(){
     grid:{left:6,right:14,top:30,bottom:6,containLabel:true},
     tooltip:{trigger:'axis',axisPointer:{type:'shadow'}},
     legend:{top:0,right:0,textStyle:AXIS_LABEL,itemWidth:12,itemHeight:8},
-    xAxis:{type:'value',axisLabel:Object.assign({},AXIS_LABEL,{formatter:fmtShort}),splitLine:SPLIT},
+    xAxis:{type:'value',max:function(v){return v.max*1.30;},axisLabel:Object.assign({},AXIS_LABEL,{formatter:fmtShort}),splitLine:SPLIT},
     yAxis:{type:'category',data:rows.map(function(r){return r.station;}),axisLabel:CAT_LABEL,axisLine:AXIS_LINE,axisTick:{show:false}},
     series:[
-      {name:'入库',type:'bar',data:rows.map(function(r){return r.inQty;}),barWidth:'40%',itemStyle:{color:PB.deep,borderRadius:[0,10,10,0]}},
-      {name:'出库',type:'bar',data:rows.map(function(r){return r.outQty;}),barWidth:'40%',itemStyle:{color:PB.mid,borderRadius:[0,10,10,0]}}
+      {name:'入库',type:'bar',data:rows.map(function(r){return r.inQty;}),barWidth:'44%',
+        showBackground:true,backgroundStyle:{color:'rgba(51,78,172,.05)',borderRadius:[0,10,10,0]},
+        itemStyle:{color:'#1B3A8F',borderRadius:[0,10,10,0]}},
+      {name:'出库',type:'bar',data:rows.map(function(r){return r.outQty;}),barWidth:'44%',
+        itemStyle:{color:'#7FA4DE',borderRadius:[0,10,10,0]}}
     ]
   });
 }
@@ -580,12 +600,15 @@ function renderSupChart(sup){
   var node = el('chartSup');
   if(!top.length){ if(node) node.innerHTML='<div class="empty-chart">暂无供应商数据</div>'; return; }
   setChart('chartSup', {
-    grid:{left:6,right:40,top:6,bottom:6,containLabel:true},
+    grid:{left:6,right:78,top:6,bottom:6,containLabel:true},
     tooltip:{trigger:'axis',axisPointer:{type:'shadow'}},
     xAxis:{type:'value',axisLabel:AXIS_LABEL,splitLine:SPLIT},
     yAxis:{type:'category',data:top.map(function(x){return x.supplier;}),axisLabel:CAT_LABEL,axisLine:AXIS_LINE,axisTick:{show:false}},
     series:[{type:'bar',data:top.map(function(x){return x.count;}),barWidth:'55%',
-      itemStyle:{borderRadius:[0,16,16,0],color:PB.main},
+      showBackground:true,
+      backgroundStyle:{color:'rgba(51,78,172,.055)',borderRadius:[0,16,16,0]},
+      itemStyle:{borderRadius:[0,16,16,0],
+        color:function(p){ return p.dataIndex===top.length-1 ? PB.deep : PB.main; }},
       emphasis:{itemStyle:{color:PB.deep}},
       label:{show:true,position:'right',color:'#0A1F4D',fontSize:11,fontWeight:600}}]
   });
@@ -802,11 +825,15 @@ function renderDailyChart(){
   var pick=function(k){ return dates.map(function(dt){ var o=byDate[dt]; return o?(o[k]||0):0; }); };
   var hasAmt = all.some(function(d){ return d.inAmt||d.soldAmt; });
   var series = hasAmt ? [
-    {name:'进货金额',type:'bar',data:pick('inAmt'),barWidth:'38%',itemStyle:{color:PB.deep,borderRadius:[8,8,0,0]}},
+    {name:'进货金额',type:'bar',data:pick('inAmt'),barWidth:'42%',
+      showBackground:true,backgroundStyle:{color:'rgba(51,78,172,.05)',borderRadius:[8,8,0,0]},
+      itemStyle:{color:GBAR_V(),borderRadius:[8,8,0,0]}},
     {name:'销售金额',type:'line',data:pick('soldAmt'),smooth:true,symbol:'circle',symbolSize:7,
       lineStyle:{width:3,color:PB.main},itemStyle:{color:PB.main},areaStyle:{color:'rgba(51,78,172,.10)'}}
   ] : [
-    {name:'进货件数',type:'bar',data:pick('inQty'),barWidth:'38%',itemStyle:{color:PB.deep,borderRadius:[8,8,0,0]}},
+    {name:'进货件数',type:'bar',data:pick('inQty'),barWidth:'42%',
+      showBackground:true,backgroundStyle:{color:'rgba(51,78,172,.05)',borderRadius:[8,8,0,0]},
+      itemStyle:{color:GBAR_V(),borderRadius:[8,8,0,0]}},
     {name:'销售件数',type:'line',data:pick('soldQty'),smooth:true,symbol:'circle',symbolSize:7,
       lineStyle:{width:3,color:PB.main},itemStyle:{color:PB.main},areaStyle:{color:'rgba(51,78,172,.10)'}}
   ];
@@ -849,18 +876,22 @@ function renderOutTypeChart(fout){
   var node = el('chartOutType');
   if(!total){ if(node) node.innerHTML='<div class="empty-chart">暂无出库流水</div>'; return; }
   var data = [
-    {name:'销售',value:agg.销售,itemStyle:{color:PB.main}},
+    {name:'销售',value:agg.销售,itemStyle:{color:pgrad('v',['#5B82DD','#2A44A0'])}},
     {name:'盘亏',value:agg.盘亏,itemStyle:{color:'#C8371B'}},
     {name:'调拨',value:agg.调拨,itemStyle:{color:PB.mid}},
     {name:'其它',value:agg.其它,itemStyle:{color:PB.soft}}
   ];
   setChart('chartOutType', {
     tooltip:{trigger:'item',valueFormatter:function(v){return nf0.format(v);}},
+    title:{text:nf0.format(total),subtext:'出库总量（件）',left:'50%',top:'30%',textAlign:'center',
+      textStyle:{fontSize:24,fontWeight:700,color:'#081F5C',fontFamily:'inherit',lineHeight:28},
+      subtextStyle:{fontSize:11,color:'rgba(8,31,92,.55)'}},
     legend:{bottom:0,textStyle:AXIS_LABEL,itemWidth:12,itemHeight:8},
-    series:[{type:'pie',radius:['48%','74%'],center:['50%','44%'],padAngle:2,
-      itemStyle:{borderRadius:8,borderColor:'#FFFFFF',borderWidth:3},
-      label:{color:'#0A1F4D',fontSize:12,fontWeight:600,formatter:'{b}\n{d}%'},
-      labelLine:{lineStyle:{color:'rgba(8,31,92,.30)'}},
+    series:[{type:'pie',radius:['52%','66%'],center:['50%','42%'],padAngle:2,
+      itemStyle:{borderRadius:6,borderColor:'#FFFFFF',borderWidth:2},
+      label:{color:'#0A1F4D',fontSize:12,fontWeight:600,
+        formatter:function(p){ return p.percent>=4 ? p.name+'  '+p.percent.toFixed(1)+'%' : ''; }},
+      labelLine:{show:true,length:10,length2:14,lineStyle:{color:'rgba(8,31,92,.30)'}},
       data:data}]
   });
 }
@@ -1100,13 +1131,18 @@ function renderDiffTypeChart(){
   var data = Object.keys(dt).map(function(k){return {name:k,value:dt[k],itemStyle:{color:colorMap[k]||PB.main}};});
   var node = el('chartDiffType');
   if(!data.length){ if(node) node.innerHTML='<div class="empty-chart">暂无差异数据</div>'; return; }
+  var dtTotal = Object.keys(dt).reduce(function(s,k){ return s + (Number(dt[k])||0); }, 0);
   setChart('chartDiffType', {
     tooltip:{trigger:'item'},
+    title:{text:nf0.format(dtTotal),subtext:'盘点行数',left:'50%',top:'30%',textAlign:'center',
+      textStyle:{fontSize:24,fontWeight:700,color:'#081F5C',fontFamily:'inherit',lineHeight:28},
+      subtextStyle:{fontSize:11,color:'rgba(8,31,92,.55)'}},
     legend:{bottom:0,textStyle:AXIS_LABEL,itemWidth:12,itemHeight:8},
-    series:[{type:'pie',radius:['46%','72%'],center:['50%','44%'],padAngle:2,
-      itemStyle:{borderRadius:8,borderColor:'#FFFFFF',borderWidth:3},
-      label:{color:'#0A1F4D',fontSize:12,fontWeight:600,formatter:'{b}\n{d}%'},
-      labelLine:{lineStyle:{color:'rgba(8,31,92,.30)'}},data:data}]
+    series:[{type:'pie',radius:['50%','64%'],center:['50%','42%'],padAngle:2,
+      itemStyle:{borderRadius:6,borderColor:'#FFFFFF',borderWidth:2},
+      label:{color:'#0A1F4D',fontSize:12,fontWeight:600,
+        formatter:function(p){ return p.percent>=4 ? p.name+'  '+p.percent.toFixed(1)+'%' : ''; }},
+      labelLine:{show:true,length:10,length2:14,lineStyle:{color:'rgba(8,31,92,.30)'}},data:data}]
   });
 }
 
