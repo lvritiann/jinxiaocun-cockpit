@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>金小存 · 进销存</title>
+<title>高速延长进销存管理系统</title>
 <script src="./vendor/echarts.min.js"></script>
 <style>
   :root{
@@ -45,15 +45,10 @@
     background:#081F5C;border-right:none;
     display:flex;flex-direction:column;padding:20px 14px 16px;
   }
-  .brand{display:flex;align-items:center;gap:11px;padding:2px 6px 20px}
-  .brand-logo{
-    width:40px;height:40px;border-radius:12px;flex:0 0 40px;
-    background:#FFFFFF;
-    display:flex;align-items:center;justify-content:center;
-    font-size:19px;font-weight:800;color:#081F5C;
-  }
-  .brand-name{font-size:17px;font-weight:700;letter-spacing:1px;color:#FFFFFF}
-  .brand-sub{font-size:11px;color:rgba(255,255,255,.55);margin-top:2px;letter-spacing:1px}
+  .brand{display:block;padding:2px 4px 18px;text-align:center}
+  .brand-img{display:block;width:100%;max-width:198px;height:auto;margin:0 auto 10px;
+    background:#FFFFFF;border-radius:12px;padding:9px 11px}
+  .brand-title{font-size:12px;font-weight:700;color:#FFFFFF;letter-spacing:.7px;line-height:1.55}
   .nav{display:flex;flex-direction:column;gap:4px;margin-top:6px}
   .nav-item{
     display:flex;align-items:center;gap:12px;width:100%;padding:11px 12px;
@@ -257,11 +252,8 @@
 <div class="app">
   <aside class="sidebar">
     <div class="brand">
-      <div class="brand-logo">金</div>
-      <div>
-        <div class="brand-name">金小存</div>
-        <div class="brand-sub">进销存管理</div>
-      </div>
+      <img class="brand-img" src="./vendor/logo.png" alt="陕西交控 · 延长石油">
+      <div class="brand-title">高速延长<br>进销存管理系统</div>
     </div>
     <nav class="nav">
       <button id="nav-overview" class="nav-item active" onclick="setTab('overview')">

@@ -164,6 +164,7 @@ async function main() {
   console.log('⑤ 产出静态看板资源…');
   copyFileIfExists('index.html', 'index.html');
   copyFileIfExists(path.join('vendor', 'echarts.min.js'), path.join('vendor', 'echarts.min.js'));
+  copyFileIfExists(path.join('vendor', 'logo.png'), path.join('vendor', 'logo.png'));
   fs.writeFileSync(path.join(SITE_DIR, '.nojekyll'), '');
   console.log('   ✅ site/ 产出完成');
 
