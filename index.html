@@ -7,26 +7,27 @@
 <script src="./vendor/echarts.min.js"></script>
 <style>
   :root{
-    /* wire 预设（lieflat-charts · 编辑部风）：纸灰底 + 炭黑数据 + 荧光橙唯一强调 */
-    --bg:#F0F0EE;
+    /* porcelain（青瓷蓝）· 单色相蓝阶：明度即数据，色相恒定
+       BG/TXT/DATA 取自 lieflat-charts color-presets.js 的 PORCELAIN */
+    --bg:#EEF2F9;
     --panel:#FFFFFF;
-    --panel-2:#F6F6F4;
-    --border:rgba(31,30,28,.13);
-    --border-soft:rgba(31,30,28,.07);
-    --text:#1F1E1C;
-    --muted:rgba(31,30,28,.60);
-    --faint:rgba(31,30,28,.38);
-    --accent:#F5572F;          /* 荧光橙：全站只给唯一主角 */
-    --accent-2:#22211F;
-    --accent-soft:rgba(245,87,47,.10);
+    --panel-2:#F4F7FC;
+    --border:rgba(8,31,92,.13);
+    --border-soft:rgba(8,31,92,.07);
+    --text:#0A1F4D;
+    --muted:rgba(8,31,92,.62);
+    --faint:rgba(8,31,92,.40);
+    --accent:#334EAC;              /* 主蓝 */
+    --accent-2:#081F5C;            /* 藏青 */
+    --accent-soft:rgba(51,78,172,.10);
     --red:#C8371B;
     --red-soft:rgba(200,55,27,.09);
     --yellow:#9C6410;
     --yellow-soft:rgba(156,100,16,.11);
     --green:#2C6E48;
     --green-soft:rgba(44,110,72,.09);
-    --radius:24px;             /* skill 硬规则：卡片圆角 24px */
-    --shadow:none;             /* skill 硬规则：无阴影，靠留白分卡 */
+    --radius:18px;
+    --shadow:0 2px 10px rgba(8,31,92,.07);
   }
   *{margin:0;padding:0;box-sizing:border-box}
   html,body{height:100%}
@@ -41,29 +42,29 @@
   /* ---------- 侧边导航 ---------- */
   .sidebar{
     width:220px;flex:0 0 220px;position:fixed;top:0;bottom:0;left:0;z-index:20;
-    background:var(--panel);border-right:1px solid var(--border);
+    background:#081F5C;border-right:none;
     display:flex;flex-direction:column;padding:20px 14px 16px;
   }
   .brand{display:flex;align-items:center;gap:11px;padding:2px 6px 20px}
   .brand-logo{
     width:40px;height:40px;border-radius:12px;flex:0 0 40px;
-    background:var(--text);
+    background:#FFFFFF;
     display:flex;align-items:center;justify-content:center;
-    font-size:19px;font-weight:800;color:var(--bg);
+    font-size:19px;font-weight:800;color:#081F5C;
   }
-  .brand-name{font-size:17px;font-weight:700;letter-spacing:1px}
-  .brand-sub{font-size:11px;color:var(--muted);margin-top:2px;letter-spacing:1px}
+  .brand-name{font-size:17px;font-weight:700;letter-spacing:1px;color:#FFFFFF}
+  .brand-sub{font-size:11px;color:rgba(255,255,255,.55);margin-top:2px;letter-spacing:1px}
   .nav{display:flex;flex-direction:column;gap:4px;margin-top:6px}
   .nav-item{
     display:flex;align-items:center;gap:12px;width:100%;padding:11px 12px;
     background:none;border:none;border-radius:10px;cursor:pointer;
-    color:var(--muted);font-size:14px;font-weight:500;text-align:left;
+    color:rgba(255,255,255,.66);font-size:14px;font-weight:500;text-align:left;
     transition:background .15s,color .15s;
   }
   .nav-item svg{width:19px;height:19px;flex:0 0 19px}
-  .nav-item:hover{background:rgba(31,30,28,.055);color:var(--text)}
-  .nav-item.active{background:var(--text);color:var(--bg);font-weight:600}
-  .sidebar-foot{margin-top:auto;padding:12px 8px 2px;font-size:12px;color:var(--faint);display:flex;align-items:center;gap:8px}
+  .nav-item:hover{background:rgba(255,255,255,.09);color:#FFFFFF}
+  .nav-item.active{background:rgba(255,255,255,.16);color:#FFFFFF;font-weight:600}
+  .sidebar-foot{margin-top:auto;padding:12px 8px 2px;font-size:12px;color:rgba(255,255,255,.45);display:flex;align-items:center;gap:8px}
   .dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);flex:0 0 8px}
 
   /* ---------- 主区 ---------- */
@@ -236,8 +237,8 @@
   .lock-err{color:var(--red);font-size:13px;min-height:18px;margin-top:10px}
   .lock-hint{color:var(--faint);font-size:11px;margin-top:14px;line-height:1.5}
   .readonly .import-only{display:none!important}
-  .sync-btn{margin-top:8px;width:100%;padding:8px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--muted);font-size:12px;cursor:pointer}
-  .sync-btn:hover{color:var(--text);border-color:var(--accent)}
+  .sync-btn{margin-top:8px;width:100%;padding:8px;border:1px solid rgba(255,255,255,.22);border-radius:8px;background:transparent;color:rgba(255,255,255,.62);font-size:12px;cursor:pointer}
+  .sync-btn:hover{color:#FFFFFF;border-color:rgba(255,255,255,.5)}
 </style>
 </head>
 <body>
@@ -405,10 +406,23 @@ function setChart(id, opt){
     try{ var n=el(id); if(n) n.innerHTML='<div class="empty-chart">图表渲染失败</div>'; }catch(_){}
   }
 }
-var AXIS_LABEL = {color:'#6B6A64'};
-var CAT_LABEL = {color:'#3A3936',fontSize:12};
-var SPLIT = {lineStyle:{color:'rgba(31,30,28,.10)'}};
-var AXIS_LINE = {lineStyle:{color:'rgba(31,30,28,.25)'}};
+/* ---------- porcelain 图表调色（lieflat-charts · 单色相蓝阶） ---------- */
+var PB = {
+  deep:'#081F5C', main:'#334EAC', mid:'#7096D1', soft:'#BAD6EB', pale:'#D0E3FF',
+  ramp:['#081F5C','#334EAC','#7096D1','#BAD6EB','#D0E3FF'],
+  ser:['#334EAC','#081F5C','#7096D1','#BAD6EB','#D0E3FF']
+};
+var AXIS_LABEL = {color:'rgba(8,31,92,.62)',fontSize:12};
+var CAT_LABEL = {color:'#0A1F4D',fontSize:12,fontWeight:600};
+var SPLIT = {lineStyle:{color:'rgba(8,31,92,.10)',type:'dashed'}};
+var AXIS_LINE = {lineStyle:{color:'rgba(8,31,92,.22)'}};
+/* 数值标签统一样式 */
+function valLabel(opt){
+  opt = opt || {};
+  return {show:true,position:opt.position||'right',color:opt.color||'#0A1F4D',
+    fontSize:opt.fontSize||11,fontWeight:600,
+    formatter:opt.formatter||function(p){return num(p.value);}};
+}
 
 /* ============================================================
  * 总览
@@ -454,9 +468,10 @@ function renderStockTopChart(top){
     tooltip:{trigger:'axis',axisPointer:{type:'shadow'},valueFormatter:function(v){return '¥'+nf0.format(v);}},
     xAxis:{type:'value',axisLabel:Object.assign({},AXIS_LABEL,{formatter:fmtShort}),splitLine:SPLIT},
     yAxis:{type:'category',data:y,axisLabel:CAT_LABEL,axisLine:AXIS_LINE,axisTick:{show:false}},
-    series:[{type:'bar',data:d,barWidth:'58%',
-      itemStyle:{borderRadius:[0,6,6,0],color:'#22211F'},
-      label:{show:true,position:'right',color:'#3A3936',formatter:function(p){return '¥'+fmtShort(p.value);}}
+    series:[{type:'bar',data:d,barWidth:'62%',
+      itemStyle:{borderRadius:[0,16,16,0],color:PB.main},
+      emphasis:{itemStyle:{color:PB.deep}},
+      label:{show:true,position:'right',color:'#0A1F4D',fontSize:11,fontWeight:600,formatter:function(p){return '¥'+fmtShort(p.value);}}
     }]
   });
 }
@@ -479,8 +494,8 @@ function renderFlowChart(){
     xAxis:{type:'value',axisLabel:Object.assign({},AXIS_LABEL,{formatter:fmtShort}),splitLine:SPLIT},
     yAxis:{type:'category',data:rows.map(function(r){return r.station;}),axisLabel:CAT_LABEL,axisLine:AXIS_LINE,axisTick:{show:false}},
     series:[
-      {name:'入库',type:'bar',data:rows.map(function(r){return r.inQty;}),barWidth:'38%',itemStyle:{color:'#2C6E48',borderRadius:[0,4,4,0]}},
-      {name:'出库',type:'bar',data:rows.map(function(r){return r.outQty;}),barWidth:'38%',itemStyle:{color:'#22211F',borderRadius:[0,4,4,0]}}
+      {name:'入库',type:'bar',data:rows.map(function(r){return r.inQty;}),barWidth:'40%',itemStyle:{color:PB.deep,borderRadius:[0,10,10,0]}},
+      {name:'出库',type:'bar',data:rows.map(function(r){return r.outQty;}),barWidth:'40%',itemStyle:{color:PB.mid,borderRadius:[0,10,10,0]}}
     ]
   });
 }
@@ -570,8 +585,9 @@ function renderSupChart(sup){
     xAxis:{type:'value',axisLabel:AXIS_LABEL,splitLine:SPLIT},
     yAxis:{type:'category',data:top.map(function(x){return x.supplier;}),axisLabel:CAT_LABEL,axisLine:AXIS_LINE,axisTick:{show:false}},
     series:[{type:'bar',data:top.map(function(x){return x.count;}),barWidth:'55%',
-      itemStyle:{borderRadius:[0,6,6,0],color:'#22211F'},
-      label:{show:true,position:'right',color:'#3A3936'}}]
+      itemStyle:{borderRadius:[0,16,16,0],color:PB.main},
+      emphasis:{itemStyle:{color:PB.deep}},
+      label:{show:true,position:'right',color:'#0A1F4D',fontSize:11,fontWeight:600}}]
   });
 }
 
@@ -786,11 +802,13 @@ function renderDailyChart(){
   var pick=function(k){ return dates.map(function(dt){ var o=byDate[dt]; return o?(o[k]||0):0; }); };
   var hasAmt = all.some(function(d){ return d.inAmt||d.soldAmt; });
   var series = hasAmt ? [
-    {name:'进货金额',type:'bar',data:pick('inAmt'),barWidth:'34%',itemStyle:{color:'#2C6E48',borderRadius:[3,3,0,0]}},
-    {name:'销售金额',type:'line',data:pick('soldAmt'),smooth:true,symbolSize:5,lineStyle:{width:2},itemStyle:{color:'#22211F'}}
+    {name:'进货金额',type:'bar',data:pick('inAmt'),barWidth:'38%',itemStyle:{color:PB.deep,borderRadius:[8,8,0,0]}},
+    {name:'销售金额',type:'line',data:pick('soldAmt'),smooth:true,symbol:'circle',symbolSize:7,
+      lineStyle:{width:3,color:PB.main},itemStyle:{color:PB.main},areaStyle:{color:'rgba(51,78,172,.10)'}}
   ] : [
-    {name:'进货件数',type:'bar',data:pick('inQty'),barWidth:'34%',itemStyle:{color:'#2C6E48',borderRadius:[3,3,0,0]}},
-    {name:'销售件数',type:'line',data:pick('soldQty'),smooth:true,symbolSize:5,lineStyle:{width:2},itemStyle:{color:'#22211F'}}
+    {name:'进货件数',type:'bar',data:pick('inQty'),barWidth:'38%',itemStyle:{color:PB.deep,borderRadius:[8,8,0,0]}},
+    {name:'销售件数',type:'line',data:pick('soldQty'),smooth:true,symbol:'circle',symbolSize:7,
+      lineStyle:{width:3,color:PB.main},itemStyle:{color:PB.main},areaStyle:{color:'rgba(51,78,172,.10)'}}
   ];
   setChart('chartDaily', {
     grid:{left:6,right:14,top:30,bottom:6,containLabel:true},
@@ -814,9 +832,11 @@ function renderDailyByStationChart(){
     xAxis:{type:'category',data:dates,
       axisLabel:Object.assign({},AXIS_LABEL,{formatter:function(v){return v.slice(5);}}),axisLine:AXIS_LINE,axisTick:{show:false}},
     yAxis:{type:'value',axisLabel:Object.assign({},AXIS_LABEL,{formatter:fmtShort}),splitLine:SPLIT},
-    series:list.slice(0,8).map(function(st){
+    series:list.slice(0,8).map(function(st,i){
       var byDate={}; (M.dailyByStation[st]||[]).forEach(function(r){ byDate[r.date]=r; });
-      return {name:st,type:'line',smooth:true,symbolSize:4,
+      var c = PB.ser[i % PB.ser.length];
+      return {name:st,type:'line',smooth:true,symbol:'circle',symbolSize:6,
+        lineStyle:{width:2.5,color:c},itemStyle:{color:c},
         data:dates.map(function(dt){ var o=byDate[dt]; return o?(o.soldQty||0):0; })};
     })
   });
@@ -829,17 +849,19 @@ function renderOutTypeChart(fout){
   var node = el('chartOutType');
   if(!total){ if(node) node.innerHTML='<div class="empty-chart">暂无出库流水</div>'; return; }
   var data = [
-    {name:'销售',value:agg.销售,itemStyle:{color:'#22211F'}},
+    {name:'销售',value:agg.销售,itemStyle:{color:PB.main}},
     {name:'盘亏',value:agg.盘亏,itemStyle:{color:'#C8371B'}},
-    {name:'调拨',value:agg.调拨,itemStyle:{color:'#9C6410'}},
-    {name:'其它',value:agg.其它,itemStyle:{color:'#6B6A64'}}
+    {name:'调拨',value:agg.调拨,itemStyle:{color:PB.mid}},
+    {name:'其它',value:agg.其它,itemStyle:{color:PB.soft}}
   ];
   setChart('chartOutType', {
     tooltip:{trigger:'item',valueFormatter:function(v){return nf0.format(v);}},
     legend:{bottom:0,textStyle:AXIS_LABEL,itemWidth:12,itemHeight:8},
-    series:[{type:'pie',radius:['45%','70%'],center:['50%','43%'],
-      itemStyle:{borderColor:'#FFFFFF',borderWidth:2},
-      label:{color:'#3A3936',formatter:'{b}\n{c}'},data:data}]
+    series:[{type:'pie',radius:['48%','74%'],center:['50%','44%'],padAngle:2,
+      itemStyle:{borderRadius:8,borderColor:'#FFFFFF',borderWidth:3},
+      label:{color:'#0A1F4D',fontSize:12,fontWeight:600,formatter:'{b}\n{d}%'},
+      labelLine:{lineStyle:{color:'rgba(8,31,92,.30)'}},
+      data:data}]
   });
 }
 function renderStSalesTable(sts){
@@ -1074,16 +1096,17 @@ function renderLedgerItemsTable(items){
 }
 function renderDiffTypeChart(){
   var dt = M.diffType||{};
-  var colorMap = {'账实相符':'#2C6E48','盘亏':'#C8371B','期末未扣销售':'#9C6410','盘点缺失':'#6B6A64'};
-  var data = Object.keys(dt).map(function(k){return {name:k,value:dt[k],itemStyle:{color:colorMap[k]||'#22211F'}};});
+  var colorMap = {'账实相符':PB.soft,'盘亏':'#C8371B','期末未扣销售':PB.mid,'盘点缺失':PB.main};
+  var data = Object.keys(dt).map(function(k){return {name:k,value:dt[k],itemStyle:{color:colorMap[k]||PB.main}};});
   var node = el('chartDiffType');
   if(!data.length){ if(node) node.innerHTML='<div class="empty-chart">暂无差异数据</div>'; return; }
   setChart('chartDiffType', {
     tooltip:{trigger:'item'},
     legend:{bottom:0,textStyle:AXIS_LABEL,itemWidth:12,itemHeight:8},
-    series:[{type:'pie',radius:['40%','68%'],center:['50%','43%'],
-      itemStyle:{borderColor:'#FFFFFF',borderWidth:2},
-      label:{color:'#3A3936',formatter:'{b}\n{c}'},data:data}]
+    series:[{type:'pie',radius:['46%','72%'],center:['50%','44%'],padAngle:2,
+      itemStyle:{borderRadius:8,borderColor:'#FFFFFF',borderWidth:3},
+      label:{color:'#0A1F4D',fontSize:12,fontWeight:600,formatter:'{b}\n{d}%'},
+      labelLine:{lineStyle:{color:'rgba(8,31,92,.30)'}},data:data}]
   });
 }
 
