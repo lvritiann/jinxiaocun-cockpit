@@ -273,10 +273,6 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21V9"/><path d="M7 14l5-5 5 5"/><path d="M3 17v2a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-2"/></svg>
         销售
       </button>
-      <button id="nav-orders" class="nav-item" onclick="setTab('orders')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12h6"/><path d="M9 16h4"/></svg>
-        订货
-      </button>
       <button id="nav-inventory" class="nav-item" onclick="setTab('inventory')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5v8l9 5 9-5V8z"/><path d="M3 8l9 5 9-5"/><path d="M12 13v8"/></svg>
         库存
@@ -307,7 +303,6 @@
       <button id="mtab-overview" class="mobile-tab active" onclick="setTab('overview')">总览</button>
       <button id="mtab-purchase" class="mobile-tab" onclick="setTab('purchase')">进货</button>
       <button id="mtab-sales" class="mobile-tab" onclick="setTab('sales')">销售</button>
-      <button id="mtab-orders" class="mobile-tab" onclick="setTab('orders')">订货</button>
       <button id="mtab-inventory" class="mobile-tab" onclick="setTab('inventory')">库存</button>
       <button id="mtab-reconcile" class="mobile-tab" onclick="setTab('reconcile')">盘点</button>
     </nav>
@@ -318,7 +313,6 @@
       <section id="panel-overview" class="panel active"></section>
       <section id="panel-purchase" class="panel" style="display:none"></section>
       <section id="panel-sales" class="panel" style="display:none"></section>
-      <section id="panel-orders" class="panel" style="display:none"></section>
       <section id="panel-inventory" class="panel" style="display:none"></section>
       <section id="panel-reconcile" class="panel" style="display:none"></section>
     </section>
@@ -344,8 +338,8 @@ var READONLY = true;            // 只读看板先行：隐藏导入 UI、不调
 var currentPass = '';           // 兼容占位（口令已于 2026-10-16 取消，不再使用）
 var GH_REPO = 'lvritiann/jinxiaocun-cockpit'; // 建好仓库后填 owner/repo，供「同步」按钮触发 Actions
 
-var TAB_TITLES = { overview:'总览', purchase:'进货', sales:'销售', orders:'订货', inventory:'库存', reconcile:'盘点' };
-var PANELS = ['overview','purchase','sales','orders','inventory','reconcile'];
+var TAB_TITLES = { overview:'总览', purchase:'进货', sales:'销售', inventory:'库存', reconcile:'盘点' };
+var PANELS = ['overview','purchase','sales','inventory','reconcile'];
 
 var nf0 = new Intl.NumberFormat('zh-CN');
 function money(v){
@@ -548,7 +542,8 @@ function renderPurchase(){
     +   '</div>'
     +   '<div id="importResult" class="import-result"></div>'
     +   '<div id="importStateBox" class="import-status"></div>'
-    + '</div>';
+    + '</div>'
+    + renderOrdersSection();
 
   renderSupChart(sup);
   renderImportControls();
@@ -705,14 +700,9 @@ function renderSales(){
  * 订货天生是服务区级（台账"门店"写"白河"），与站级库存不是一张表，
  * 所以单独一页签，不和库存/销售混算。
  * ========================================================== */
-function renderOrders(){
-  var p = el('panel-orders'); if(!p) return;
+function renderOrdersSection(){
   var O = M.orders || {};
-  if(!O.total){
-    p.innerHTML = '<div class="card"><div class="empty">暂无订货数据'
-      + (O.error ? '（'+esc(O.error)+'）' : '') + '</div></div>';
-    return;
-  }
+  if(!O.total) return '';
   var st = O.byStatus || {};
   var pend = O.pendingStationTotal || 0;
 
@@ -733,7 +723,7 @@ function renderOrders(){
     return '<tr><td>'+esc(r.area)+'</td><td class="num neg">'+num(r.count)+'</td></tr>';
   }).join('');
 
-  p.innerHTML =
+  return (
     '<div class="kpi-grid">'
     + kpiCard('订货笔数', num(O.total)+'<span class="unit">笔</span>', '服务区级下订', '')
     + kpiCard('订货金额', money(O.amount), '合计 '+num(O.qty)+' 件', '')
@@ -749,7 +739,8 @@ function renderOrders(){
     + '</div>'
     + '<div class="card"><div class="card-head"><h3>最近订货</h3>'
     +   '<span class="muted">最近 '+(O.recent||[]).length+' 笔</span></div>'
-    + table(['日期','供应商','服务区','商品','数量','金额','状态','分站'], trs) + '</div>';
+    + table(['日期','供应商','服务区','商品','数量','金额','状态','分站'], trs) + '</div>'
+  );
 }
 // 流水覆盖度体检：把「为什么趋势图是断的」直接说清楚，避免对着空图猜
 function renderFlowCoverageNote(){
@@ -1099,9 +1090,14 @@ function renderDiffTypeChart(){
  * 面板调度 / 状态
  * ========================================================== */
 function showPanel(tab){
+  // ⚠️ 必须同时切换 active 类：CSS 是 `.panel{display:none}` / `.panel.active{display:block}`。
+  // 早期只写 node.style.display='' 是「移除内联样式」，会回落到 .panel{display:none}，
+  // 结果除初始带 active 的总览外，其它页签点开后整页空白（2026-10-20 修复）。
   PANELS.forEach(function(t){
     var node = el('panel-'+t);
-    if(node) node.style.display = (t===tab) ? '' : 'none';
+    if(!node) return;
+    if(t===tab){ node.className = 'panel active'; node.style.display = ''; }
+    else { node.className = 'panel'; node.style.display = 'none'; }
   });
 }
 function renderPanel(tab){
@@ -1112,7 +1108,6 @@ function renderPanel(tab){
     if(tab==='overview') renderOverview();
     else if(tab==='purchase') renderPurchase();
     else if(tab==='sales') renderSales();
-    else if(tab==='orders') renderOrders();
     else if(tab==='inventory') renderInventory();
     else if(tab==='reconcile') renderReconcile();
   }catch(err){

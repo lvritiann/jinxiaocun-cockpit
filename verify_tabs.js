@@ -76,19 +76,27 @@ try {
 
 // 等异步解密 + 首屏渲染
 setTimeout(() => {
-  const tabs = ['overview', 'purchase', 'sales', 'orders', 'inventory', 'reconcile'];
-  const names = { overview:'总览', purchase:'进货', sales:'销售', orders:'订货', inventory:'库存', reconcile:'盘点' };
+  const tabs = ['overview', 'purchase', 'sales', 'inventory', 'reconcile'];
+  const names = { overview:'总览', purchase:'进货', sales:'销售', inventory:'库存', reconcile:'盘点' };
   let bad = 0;
   for (const t of tabs) {
     let err = null;
     try { vm.runInContext('setTab("' + t + '")', ctx, { timeout: 8000 }); }
     catch (e) { err = e.message; }
-    const htmlLen = (ctx.document.getElementById('panel-' + t).innerHTML || '').length;
-    const ok = !err && htmlLen > 200;
+    const node = ctx.document.getElementById('panel-' + t);
+    const htmlLen = (node.innerHTML || '').length;
+    // ★ 必须验「可见性」：CSS 是 .panel{display:none}/.panel.active{display:block}，
+    //   早期只查 innerHTML 长度，页签内容明明生成了但整页隐藏，验证却报 ✅（2026-10-20 教训）。
+    const cls = String(node.className || '');
+    const inlineDisp = String(node.style && node.style.display || '');
+    const visible = cls.indexOf('active') >= 0 && inlineDisp !== 'none';
+    const ok = !err && htmlLen > 200 && visible;
     if (!ok) bad++;
     console.log((ok ? '  ✅ ' : '  ❌ ') + names[t].padEnd(4) +
-      ' 面板内容 ' + String(htmlLen).padStart(6) + ' 字符' + (err ? '  错误: ' + err : ''));
+      ' 面板内容 ' + String(htmlLen).padStart(6) + ' 字符' +
+      '  可见=' + (visible ? 'Y' : 'N') + '(class="' + cls + '",display="' + inlineDisp + '")' +
+      (err ? '  错误: ' + err : ''));
   }
-  console.log(bad ? '\n❌ ' + bad + ' 个页签未正常渲染' : '\n✅ 五个页签全部正常渲染');
+  console.log(bad ? '\n❌ ' + bad + ' 个页签未正常渲染' : '\n✅ 五个页签全部正常渲染且可见');
   process.exit(bad ? 1 : 0);
 }, 2500);
