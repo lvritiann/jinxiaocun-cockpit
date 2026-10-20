@@ -152,7 +152,8 @@
   /* ---------- 表格 ---------- */
   .table-wrap{overflow-x:auto;margin:2px 0 6px}
   table{width:100%;border-collapse:collapse;font-size:13px}
-  th{text-align:left;padding:9px 12px;color:var(--muted);font-weight:600;font-size:12px;border-bottom:1px solid var(--border);white-space:nowrap}
+  th{text-align:left;padding:10px 12px;color:var(--muted);font-weight:600;font-size:12px;border-bottom:1px solid var(--border);white-space:nowrap}
+  th.num{text-align:right;font-variant-numeric:tabular-nums}
   td{padding:10px 12px;border-bottom:1px solid var(--border-soft);color:var(--text);white-space:nowrap}
   tbody tr{transition:background .12s}
   tbody tr:hover{background:rgba(31,30,28,.035)}
@@ -364,8 +365,15 @@ function esc(s){
 function el(id){ return document.getElementById(id); }
 function emptyDiv(msg){ return '<div class="empty">'+msg+'</div>'; }
 function table(heads, rowsHtml){
-  return '<div class="table-wrap"><table><thead><tr>'
-    + heads.map(function(h){return '<th>'+h+'</th>';}).join('')
+  // 表头对齐必须跟数据列走：数字列 (td.num) 右对齐，表头也要右对齐，
+  // 否则 th 全局左对齐、td.num 右对齐 → 表头与数字左右错位（2026-10-20 修复）
+  var firstRow = (String(rowsHtml).match(/<tr[\s\S]*?<\/tr>/) || [''])[0];
+  var tds = firstRow.match(/<td[^>]*>/g) || [];
+  var ths = heads.map(function(h, i){
+    var isNum = tds[i] && /class="[^"]*\bnum\b/.test(tds[i]);
+    return '<th' + (isNum ? ' class="num"' : '') + '>' + h + '</th>';
+  }).join('');
+  return '<div class="table-wrap"><table><thead><tr>' + ths
     + '</tr></thead><tbody>' + rowsHtml + '</tbody></table></div>';
 }
 function kpiCard(label, value, sub, tone){
