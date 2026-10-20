@@ -76,8 +76,8 @@ try {
 
 // 等异步解密 + 首屏渲染
 setTimeout(() => {
-  const tabs = ['overview', 'purchase', 'sales', 'inventory', 'reconcile'];
-  const names = { overview:'总览', purchase:'进货', sales:'销售', inventory:'库存', reconcile:'盘点' };
+  const tabs = ['overview', 'purchase', 'sales', 'orders', 'inventory', 'reconcile'];
+  const names = { overview:'总览', purchase:'进货', sales:'销售', orders:'订货', inventory:'库存', reconcile:'盘点' };
   let bad = 0;
   for (const t of tabs) {
     let err = null;

@@ -56,6 +56,79 @@ function copyFileIfExists(relSrc, relDst) {
   console.log('📄 已复制 ' + relSrc + ' → ' + relDst);
 }
 
+// ---- 订货台账聚合（金小存 10_订货台账，sheet 37）----
+// 订货是服务区级（台账"门店"列写"白河""韩城"），与站级库存不是一张表，单独成一页签。
+// 「待分站」= 已到货但 分站结果 结尾不是方向字（东/西/南/北），即还没分到具体站。
+async function buildOrders() {
+  const ORDER_SHEET = 37;
+  const recs = [];
+  let token = '';
+  let pages = 0;
+  do {
+    const args = { file_id: engine.LINK, sheet_id: ORDER_SHEET, page_size: 1000 };
+    if (token) args.page_token = token;
+    const j = await engine.callTool('dbsheet.records_list', args);
+    if (!j || j.code !== 0) break;
+    const d = (j.data && j.data.data) ? j.data.data : (j.data || {});
+    for (const r of (d.records || [])) {
+      try { recs.push(JSON.parse(r.fields || '{}')); } catch (e) { }
+    }
+    token = d.page_token || '';
+    pages++;
+  } while (token && pages < 10);
+
+  const n = v => { const x = Number(v); return isNaN(x) ? 0 : x; };
+  const t = v => (v === undefined || v === null) ? '' : String(v);
+
+  let qty = 0, amount = 0;
+  const byStatus = {}, bySupplier = {}, byArea = {}, pend = {};
+  for (const f of recs) {
+    qty += n(f['数量']);
+    amount += n(f['金额']);
+    const st = t(f['状态']) || '(空)';
+    byStatus[st] = (byStatus[st] || 0) + 1;
+
+    const sup = t(f['供货商']) || '(未知)';
+    if (!bySupplier[sup]) bySupplier[sup] = { supplier: sup, count: 0, qty: 0, amount: 0 };
+    bySupplier[sup].count++;
+    bySupplier[sup].qty += n(f['数量']);
+    bySupplier[sup].amount += n(f['金额']);
+
+    const area = t(f['服务区']) || '(未知)';
+    if (!byArea[area]) byArea[area] = { area: area, count: 0, qty: 0, amount: 0 };
+    byArea[area].count++;
+    byArea[area].qty += n(f['数量']);
+    byArea[area].amount += n(f['金额']);
+
+    const res = t(f['分站结果']);
+    if (st === '已到货' && res && !/[东南西北]$/.test(res)) pend[res] = (pend[res] || 0) + 1;
+  }
+
+  const pendingStation = Object.keys(pend)
+    .map(k => ({ area: k, count: pend[k] }))
+    .sort((a, b) => b.count - a.count);
+
+  const recent = recs.slice().reverse().slice(0, 80).map(f => ({
+    date: t(f['日期']), supplier: t(f['供货商']), area: t(f['服务区']),
+    goods: t(f['商品名称']), spec: t(f['规格']), unit: t(f['单位']),
+    qty: n(f['数量']), price: n(f['单价']), amount: n(f['金额']),
+    status: t(f['状态']), arrivedQty: n(f['到货数量']), arrivedDate: t(f['到货日期']),
+    station: t(f['分站结果'])
+  }));
+
+  return {
+    total: recs.length,
+    qty: +qty.toFixed(2),
+    amount: +amount.toFixed(2),
+    byStatus: byStatus,
+    bySupplier: Object.values(bySupplier).sort((a, b) => b.amount - a.amount),
+    byArea: Object.values(byArea).sort((a, b) => b.amount - a.amount),
+    pendingStation: pendingStation,
+    pendingStationTotal: pendingStation.reduce((s, x) => s + x.count, 0),
+    recent: recent
+  };
+}
+
 async function main() {
   fs.mkdirSync(SITE_DIR, { recursive: true });
 
@@ -65,6 +138,15 @@ async function main() {
   await refreshFlow();
   console.log('③ 聚合计算(s9 实时库存 / s31 月度盘点)…');
   const M = await buildMetrics();
+  console.log('③b 聚合订货台账(s37)…');
+  try {
+    M.orders = await buildOrders();
+    console.log('   ✅ 订货 ' + M.orders.total + ' 条 / ¥' + M.orders.amount.toLocaleString()
+      + ' / 待分站 ' + M.orders.pendingStationTotal + ' 条');
+  } catch (e) {
+    console.log('   ⚠️ 订货聚合失败（看板订货页签将显示为空）: ' + (e && e.message ? e.message : e));
+    M.orders = { total: 0, qty: 0, amount: 0, byStatus: {}, bySupplier: [], byArea: [], pendingStation: [], pendingStationTotal: 0, recent: [], error: String(e && e.message || e) };
+  }
   M.generatedAt = new Date().toISOString();
 
   if (PLAINTEXT) {
