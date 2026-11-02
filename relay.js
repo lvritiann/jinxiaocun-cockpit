@@ -163,6 +163,8 @@ async function main() {
 
   console.log('⑤ 产出静态看板资源…');
   copyFileIfExists('index.html', 'index.html');
+  // 页面内的「首页」返回按钮脚本（可选资源，缺失不影响看板）
+  copyFileIfExists('hub-home.js', 'hub-home.js');
   copyFileIfExists(path.join('vendor', 'echarts.min.js'), path.join('vendor', 'echarts.min.js'));
   copyFileIfExists(path.join('vendor', 'logo.png'), path.join('vendor', 'logo.png'));
   fs.writeFileSync(path.join(SITE_DIR, '.nojekyll'), '');
